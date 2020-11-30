@@ -389,7 +389,11 @@ public:
 
     m_SymInitialized = Sym.Initialize(m_hProcess, szSymPath, FALSE);
     if (m_SymInitialized == FALSE)
+    {
       this->m_parent->OnDbgHelpErr("SymInitialize", GetLastError(), 0);
+      FreeLibrary(m_hDbhHelp);
+      return FALSE;
+    }
 
     DWORD symOptions = Sym.GetOptions();
     symOptions |= SYMOPT_LOAD_LINES;
