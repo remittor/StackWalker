@@ -252,6 +252,16 @@ static void MyStrCpy(char* szDest, size_t nMaxDestSize, const char* szSrc)
 // Normally it should be enough to use 'CONTEXT_FULL' (better would be 'CONTEXT_ALL')
 #define USED_CONTEXT_FLAGS CONTEXT_FULL
 
+static LPVOID GetProcAddrEx(int & counter, HMODULE hLib, LPCSTR name, LPVOID * ptr = NULL)
+{
+  LPVOID proc = GetProcAddress(hLib, name);
+  counter += proc ? 1 : 0;
+  if (ptr)
+    *ptr = proc;
+  return proc;
+}
+
+
 class StackWalkerInternal
 {
 public:
@@ -362,31 +372,32 @@ public:
       m_hDbhHelp = LoadLibrary(_T("dbghelp.dll"));
     if (m_hDbhHelp == NULL)
       return FALSE;
-    pSI = (tSI)GetProcAddress(m_hDbhHelp, "SymInitialize");
-    pSC = (tSC)GetProcAddress(m_hDbhHelp, "SymCleanup");
+    
+    int fcnt = 0;
+    GetProcAddrEx(fcnt, m_hDbhHelp, "SymInitialize", (LPVOID*)&pSI);
+    GetProcAddrEx(fcnt, m_hDbhHelp, "SymCleanup", (LPVOID*)&pSC);
 
-    pSW = (tSW)GetProcAddress(m_hDbhHelp, "StackWalk64");
-    pSGO = (tSGO)GetProcAddress(m_hDbhHelp, "SymGetOptions");
-    pSSO = (tSSO)GetProcAddress(m_hDbhHelp, "SymSetOptions");
+    GetProcAddrEx(fcnt, m_hDbhHelp, "StackWalk64", (LPVOID*)&pSW);
+    GetProcAddrEx(fcnt, m_hDbhHelp, "SymGetOptions", (LPVOID*)&pSGO);
+    GetProcAddrEx(fcnt, m_hDbhHelp, "SymSetOptions", (LPVOID*)&pSSO);
 
-    pSFTA = (tSFTA)GetProcAddress(m_hDbhHelp, "SymFunctionTableAccess64");
-    pSGLFA = (tSGLFA)GetProcAddress(m_hDbhHelp, "SymGetLineFromAddr64");
-    pSGMB = (tSGMB)GetProcAddress(m_hDbhHelp, "SymGetModuleBase64");
-    pSGMI = (tSGMI)GetProcAddress(m_hDbhHelp, "SymGetModuleInfo64");
-    pSGSFA = (tSGSFA)GetProcAddress(m_hDbhHelp, "SymGetSymFromAddr64");
-    pUDSN = (tUDSN)GetProcAddress(m_hDbhHelp, "UnDecorateSymbolName");
-    pSLM = (tSLM)GetProcAddress(m_hDbhHelp, "SymLoadModule64");
-    pSGSP = (tSGSP)GetProcAddress(m_hDbhHelp, "SymGetSearchPath");
+    GetProcAddrEx(fcnt, m_hDbhHelp, "SymFunctionTableAccess64", (LPVOID*)&pSFTA);
+    GetProcAddrEx(fcnt, m_hDbhHelp, "SymGetModuleBase64", (LPVOID*)&pSGMB);
+    GetProcAddrEx(fcnt, m_hDbhHelp, "SymGetModuleInfo64", (LPVOID*)&pSGMI);
+    GetProcAddrEx(fcnt, m_hDbhHelp, "SymGetSymFromAddr64", (LPVOID*)&pSGSFA);
+    GetProcAddrEx(fcnt, m_hDbhHelp, "UnDecorateSymbolName", (LPVOID*)&pUDSN);
+    GetProcAddrEx(fcnt, m_hDbhHelp, "SymLoadModule64", (LPVOID*)&pSLM);
 
-    if (pSC == NULL || pSFTA == NULL || pSGMB == NULL || pSGMI == NULL || pSGO == NULL ||
-        pSGSFA == NULL || pSI == NULL || pSSO == NULL || pSW == NULL || pUDSN == NULL ||
-        pSLM == NULL)
+    if (fcnt < 11)
     {
       FreeLibrary(m_hDbhHelp);
       m_hDbhHelp = NULL;
       pSC = NULL;
       return FALSE;
     }
+    fcnt = 0;
+    GetProcAddrEx(fcnt, m_hDbhHelp, "SymGetLineFromAddr64", (LPVOID*)&pSGLFA);
+    GetProcAddrEx(fcnt, m_hDbhHelp, "SymGetSearchPath", (LPVOID*)&pSGSP);
 
     // SymInitialize
     m_SymInitialized = this->pSI(m_hProcess, szSymPath, FALSE);
@@ -467,79 +478,66 @@ public:
 #pragma pack(pop)
 
   // SymCleanup()
-  typedef BOOL(__stdcall* tSC)(IN HANDLE hProcess);
-  tSC pSC;
+  BOOL (WINAPI * pSC)(IN HANDLE hProcess);
 
   // SymFunctionTableAccess64()
-  typedef PVOID(__stdcall* tSFTA)(HANDLE hProcess, DWORD64 AddrBase);
-  tSFTA pSFTA;
+  PVOID (WINAPI * pSFTA)(HANDLE hProcess, DWORD64 AddrBase);
 
   // SymGetLineFromAddr64()
-  typedef BOOL(__stdcall* tSGLFA)(IN HANDLE hProcess,
-                                  IN DWORD64 dwAddr,
-                                  OUT PDWORD pdwDisplacement,
-                                  OUT PIMAGEHLP_LINE64 Line);
-  tSGLFA pSGLFA;
+  BOOL (WINAPI * pSGLFA)(IN HANDLE hProcess,
+                         IN DWORD64 dwAddr,
+                         OUT PDWORD pdwDisplacement,
+                         OUT PIMAGEHLP_LINE64 Line);
 
   // SymGetModuleBase64()
-  typedef DWORD64(__stdcall* tSGMB)(IN HANDLE hProcess, IN DWORD64 dwAddr);
-  tSGMB pSGMB;
+  DWORD64 (WINAPI * pSGMB)(IN HANDLE hProcess, IN DWORD64 dwAddr);
 
   // SymGetModuleInfo64()
-  typedef BOOL(__stdcall* tSGMI)(IN HANDLE hProcess,
-                                 IN DWORD64 dwAddr,
-                                 OUT IMAGEHLP_MODULE64_V3* ModuleInfo);
-  tSGMI pSGMI;
+  BOOL (WINAPI * pSGMI)(IN HANDLE hProcess,
+                        IN DWORD64 dwAddr,
+                        OUT IMAGEHLP_MODULE64_V3* ModuleInfo);
 
   // SymGetOptions()
-  typedef DWORD(__stdcall* tSGO)(VOID);
-  tSGO pSGO;
+  DWORD (WINAPI * pSGO)(VOID);
 
   // SymGetSymFromAddr64()
-  typedef BOOL(__stdcall* tSGSFA)(IN HANDLE hProcess,
-                                  IN DWORD64 dwAddr,
-                                  OUT PDWORD64 pdwDisplacement,
-                                  OUT PIMAGEHLP_SYMBOL64 Symbol);
-  tSGSFA pSGSFA;
+  BOOL (WINAPI * pSGSFA)(IN HANDLE hProcess,
+                         IN DWORD64 dwAddr,
+                         OUT PDWORD64 pdwDisplacement,
+                         OUT PIMAGEHLP_SYMBOL64 Symbol);
 
   // SymInitialize()
-  typedef BOOL(__stdcall* tSI)(IN HANDLE hProcess, IN LPCSTR UserSearchPath, IN BOOL fInvadeProcess);
-  tSI pSI;
+  BOOL (WINAPI * pSI)(IN HANDLE hProcess, IN LPCSTR UserSearchPath, IN BOOL fInvadeProcess);
 
   // SymLoadModule64()
-  typedef DWORD64(__stdcall* tSLM)(IN HANDLE hProcess,
-                                   IN HANDLE hFile,
-                                   IN LPCSTR ImageName,
-                                   IN LPCSTR ModuleName,
-                                   IN DWORD64 BaseOfDll,
-                                   IN DWORD SizeOfDll);
-  tSLM pSLM;
+  DWORD64 (WINAPI * pSLM)(IN HANDLE hProcess,
+                          IN HANDLE hFile,
+                          IN LPCSTR ImageName,
+                          IN LPCSTR ModuleName,
+                          IN DWORD64 BaseOfDll,
+                          IN DWORD SizeOfDll);
 
   // SymSetOptions()
-  typedef DWORD(__stdcall* tSSO)(IN DWORD SymOptions);
-  tSSO pSSO;
+  DWORD (WINAPI * pSSO)(IN DWORD SymOptions);
 
   // StackWalk64()
-  typedef BOOL(__stdcall* tSW)(DWORD                            MachineType,
-                               HANDLE                           hProcess,
-                               HANDLE                           hThread,
-                               LPSTACKFRAME64                   StackFrame,
-                               PVOID                            ContextRecord,
-                               PREAD_PROCESS_MEMORY_ROUTINE64   ReadMemoryRoutine,
-                               PFUNCTION_TABLE_ACCESS_ROUTINE64 FunctionTableAccessRoutine,
-                               PGET_MODULE_BASE_ROUTINE64       GetModuleBaseRoutine,
-                               PTRANSLATE_ADDRESS_ROUTINE64     TranslateAddress);
-  tSW pSW;
+  BOOL (WINAPI * pSW)( DWORD                            MachineType,
+                       HANDLE                           hProcess,
+                       HANDLE                           hThread,
+                       LPSTACKFRAME64                   StackFrame,
+                       PVOID                            ContextRecord,
+                       PREAD_PROCESS_MEMORY_ROUTINE64   ReadMemoryRoutine,
+                       PFUNCTION_TABLE_ACCESS_ROUTINE64 FunctionTableAccessRoutine,
+                       PGET_MODULE_BASE_ROUTINE64       GetModuleBaseRoutine,
+                       PTRANSLATE_ADDRESS_ROUTINE64     TranslateAddress);
 
   // UnDecorateSymbolName()
-  typedef DWORD(__stdcall WINAPI* tUDSN)(PCSTR DecoratedName,
-                                         PSTR  UnDecoratedName,
-                                         DWORD UndecoratedLength,
-                                         DWORD Flags);
-  tUDSN pUDSN;
+  DWORD (WINAPI * pUDSN)(PCSTR DecoratedName,
+                         PSTR  UnDecoratedName,
+                         DWORD UndecoratedLength,
+                         DWORD Flags);
 
-  typedef BOOL(__stdcall WINAPI* tSGSP)(HANDLE hProcess, PSTR SearchPath, DWORD SearchPathLength);
-  tSGSP pSGSP;
+  BOOL (WINAPI * pSGSP)(HANDLE hProcess, PSTR SearchPath, DWORD SearchPathLength);
 
 private:
 // **************************************** ToolHelp32 ************************
@@ -590,10 +588,11 @@ private:
       hToolhelp = LoadLibrary(dllname[i]);
       if (hToolhelp == NULL)
         continue;
-      pCT32S = (tCT32S)GetProcAddress(hToolhelp, "CreateToolhelp32Snapshot");
-      pM32F = (tM32F)GetProcAddress(hToolhelp, "Module32First");
-      pM32N = (tM32N)GetProcAddress(hToolhelp, "Module32Next");
-      if ((pCT32S != NULL) && (pM32F != NULL) && (pM32N != NULL))
+      int fcnt = 0;
+      GetProcAddrEx(fcnt, hToolhelp, "CreateToolhelp32Snapshot", (LPVOID*)&pCT32S);
+      GetProcAddrEx(fcnt, hToolhelp, "Module32First", (LPVOID*)&pM32F);
+      GetProcAddrEx(fcnt, hToolhelp, "Module32Next", (LPVOID*)&pM32N);
+      if (fcnt < 3)
         break; // found the functions!
       FreeLibrary(hToolhelp);
       hToolhelp = NULL;
@@ -667,11 +666,12 @@ private:
     if (hPsapi == NULL)
       return FALSE;
 
-    pEPM = (tEPM)GetProcAddress(hPsapi, "EnumProcessModules");
-    pGMFNE = (tGMFNE)GetProcAddress(hPsapi, "GetModuleFileNameExA");
-    pGMBN = (tGMFNE)GetProcAddress(hPsapi, "GetModuleBaseNameA");
-    pGMI = (tGMI)GetProcAddress(hPsapi, "GetModuleInformation");
-    if ((pEPM == NULL) || (pGMFNE == NULL) || (pGMBN == NULL) || (pGMI == NULL))
+    int fcnt = 0;
+    GetProcAddrEx(fcnt, hPsapi, "EnumProcessModules", (LPVOID*)&pEPM);
+    GetProcAddrEx(fcnt, hPsapi, "GetModuleFileNameExA", (LPVOID*)&pGMFNE);
+    GetProcAddrEx(fcnt, hPsapi, "GetModuleBaseNameA", (LPVOID*)&pGMBN);
+    GetProcAddrEx(fcnt, hPsapi, "GetModuleInformation", (LPVOID*)&pGMI);
+    if (fcnt < 4)
     {
       // we couldn't find all functions
       FreeLibrary(hPsapi);
