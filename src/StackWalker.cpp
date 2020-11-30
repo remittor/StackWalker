@@ -261,6 +261,7 @@ public:
     m_hDbhHelp = NULL;
     pSC = NULL;
     m_hProcess = hProcess;
+    m_SymInitialized = FALSE;
     pSFTA = NULL;
     pSGLFA = NULL;
     pSGMB = NULL;
@@ -280,7 +281,7 @@ public:
 
   ~StackWalkerInternal()
   {
-    if (pSC != NULL)
+    if (pSC != NULL && m_SymInitialized != FALSE)
       pSC(m_hProcess); // SymCleanup
     if (m_hDbhHelp != NULL)
       FreeLibrary(m_hDbhHelp);
@@ -388,7 +389,8 @@ public:
     }
 
     // SymInitialize
-    if (this->pSI(m_hProcess, szSymPath, FALSE) == FALSE)
+    m_SymInitialized = this->pSI(m_hProcess, szSymPath, FALSE);
+    if (m_SymInitialized == FALSE)
       this->m_parent->OnDbgHelpErr("SymInitialize", GetLastError(), 0);
 
     DWORD symOptions = this->pSGO(); // SymGetOptions
@@ -417,6 +419,7 @@ public:
   CONTEXT m_ctx;
   HMODULE m_hDbhHelp;
   HANDLE  m_hProcess;
+  BOOL    m_SymInitialized;
 
 #pragma pack(push, 8)
   typedef struct _IMAGEHLP_MODULE64_V3
