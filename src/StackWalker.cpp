@@ -239,7 +239,7 @@ typedef DWORD64(__stdcall* PTRANSLATE_ADDRESS_ROUTINE64)(HANDLE      hProcess,
 #define _tcscat_s _tcscat
 #endif
 
-static void MyStrCpy(char* szDest, size_t nMaxDestSize, const char* szSrc)
+static void MyStrCpy(char* szDest, size_t nMaxDestSize, const char* szSrc) STKWLK_NOEXCEPT
 {
   if (nMaxDestSize <= 0)
     return;
@@ -252,7 +252,7 @@ static void MyStrCpy(char* szDest, size_t nMaxDestSize, const char* szSrc)
 // Normally it should be enough to use 'CONTEXT_FULL' (better would be 'CONTEXT_ALL')
 #define USED_CONTEXT_FLAGS CONTEXT_FULL
 
-static LPVOID GetProcAddrEx(int & counter, HMODULE hLib, LPCSTR name, LPVOID * ptr = NULL)
+static LPVOID GetProcAddrEx(int & counter, HMODULE hLib, LPCSTR name, LPVOID * ptr = NULL) STKWLK_NOEXCEPT
 {
   LPVOID proc = GetProcAddress(hLib, name);
   counter += proc ? 1 : 0;
@@ -265,7 +265,7 @@ static LPVOID GetProcAddrEx(int & counter, HMODULE hLib, LPCSTR name, LPVOID * p
 class StackWalkerInternal
 {
 public:
-  StackWalkerInternal(StackWalker* parent, HANDLE hProcess, PCONTEXT ctx)
+  StackWalkerInternal(StackWalker* parent, HANDLE hProcess, PCONTEXT ctx) STKWLK_NOEXCEPT
   {
     m_parent = parent;
     m_hDbhHelp = NULL;
@@ -277,7 +277,7 @@ public:
       m_ctx = *ctx;
   }
 
-  ~StackWalkerInternal()
+  ~StackWalkerInternal() STKWLK_NOEXCEPT
   {
     if (Sym.Cleanup != NULL && m_SymInitialized != FALSE)
       Sym.Cleanup(m_hProcess);
@@ -287,7 +287,7 @@ public:
     m_parent = NULL;
   }
 
-  BOOL Init(LPCSTR szSymPath)
+  BOOL Init(LPCSTR szSymPath) STKWLK_NOEXCEPT
   {
     if (m_parent == NULL)
       return FALSE;
@@ -541,7 +541,7 @@ private:
   typedef MODULEENTRY32* LPMODULEENTRY32;
 #pragma pack(pop)
 
-  BOOL GetModuleListTH32(HANDLE hProcess, DWORD pid)
+  BOOL GetModuleListTH32(HANDLE hProcess, DWORD pid) STKWLK_NOEXCEPT
   {
     // try both dlls...
     const TCHAR* dllname[] = {_T("kernel32.dll"), _T("tlhelp32.dll")};
@@ -602,7 +602,7 @@ private:
     LPVOID EntryPoint;
   } MODULEINFO, *LPMODULEINFO;
 
-  BOOL GetModuleListPSAPI(HANDLE hProcess)
+  BOOL GetModuleListPSAPI(HANDLE hProcess) STKWLK_NOEXCEPT
   {
     HINSTANCE hPsapi;
     BOOL  (WINAPI * EnumProcessModules)(HANDLE hProcess, HMODULE * lphModule, DWORD cb, LPDWORD lpcbNeeded);
@@ -684,7 +684,7 @@ private:
     return cnt != 0;
   } // GetModuleListPSAPI
 
-  DWORD LoadModule(HANDLE hProcess, LPCSTR img, LPCSTR mod, DWORD64 baseAddr, DWORD size)
+  DWORD LoadModule(HANDLE hProcess, LPCSTR img, LPCSTR mod, DWORD64 baseAddr, DWORD size) STKWLK_NOEXCEPT
   {
     CHAR* szImg = _strdup(img);
     CHAR* szMod = _strdup(mod);
@@ -777,7 +777,7 @@ private:
   }
 
 public:
-  BOOL LoadModules(HANDLE hProcess, DWORD dwProcessId)
+  BOOL LoadModules(HANDLE hProcess, DWORD dwProcessId) STKWLK_NOEXCEPT
   {
     // first try toolhelp32
     if (GetModuleListTH32(hProcess, dwProcessId))
@@ -786,7 +786,7 @@ public:
     return GetModuleListPSAPI(hProcess);
   }
 
-  BOOL GetModuleInfo(HANDLE hProcess, DWORD64 baseAddr, IMAGEHLP_MODULE64_V3* pModuleInfo)
+  BOOL GetModuleInfo(HANDLE hProcess, DWORD64 baseAddr, IMAGEHLP_MODULE64_V3* pModuleInfo) STKWLK_NOEXCEPT
   {
     memset(pModuleInfo, 0, sizeof(IMAGEHLP_MODULE64_V3));
     if (Sym.GetModuleInfo == NULL)
@@ -844,7 +844,7 @@ extern "C" void* __cdecl _getptd();
 extern "C" void** __cdecl __current_exception_context();
 #endif
 
-static PCONTEXT get_current_exception_context()
+static PCONTEXT get_current_exception_context() STKWLK_NOEXCEPT
 {
   PCONTEXT * pctx = NULL;
 #if defined(_MSC_VER) && _MSC_VER >= 1400 && _MSC_VER < 1900  
@@ -859,7 +859,7 @@ static PCONTEXT get_current_exception_context()
 }
 
 bool StackWalker::Init(ExceptType extype, int options, LPCSTR szSymPath, DWORD dwProcessId,
-                       HANDLE hProcess, PEXCEPTION_POINTERS exp)
+                       HANDLE hProcess, PEXCEPTION_POINTERS exp) STKWLK_NOEXCEPT
 {
   PCONTEXT ctx = NULL;
   if (extype == AfterCatch)
@@ -882,22 +882,22 @@ bool StackWalker::Init(ExceptType extype, int options, LPCSTR szSymPath, DWORD d
   return true;
 }
 
-StackWalker::StackWalker(DWORD dwProcessId, HANDLE hProcess)
+StackWalker::StackWalker(DWORD dwProcessId, HANDLE hProcess) STKWLK_NOEXCEPT
 {
   Init(NonExcept, OptionsAll, NULL, dwProcessId, hProcess);
 }
 
-StackWalker::StackWalker(int options, LPCSTR szSymPath, DWORD dwProcessId, HANDLE hProcess)
+StackWalker::StackWalker(int options, LPCSTR szSymPath, DWORD dwProcessId, HANDLE hProcess) STKWLK_NOEXCEPT
 {
   Init(NonExcept, options, szSymPath, dwProcessId, hProcess);
 }
 
-StackWalker::StackWalker(ExceptType extype, int options, PEXCEPTION_POINTERS exp)
+StackWalker::StackWalker(ExceptType extype, int options, PEXCEPTION_POINTERS exp) STKWLK_NOEXCEPT
 {
   Init(extype, options, NULL, GetCurrentProcessId(), GetCurrentProcess(), exp);
 }
 
-StackWalker::~StackWalker()
+StackWalker::~StackWalker() STKWLK_NOEXCEPT
 {
   SetSymPath(NULL);
   if (m_sw != NULL) {
@@ -907,7 +907,7 @@ StackWalker::~StackWalker()
   m_sw = NULL;
 }
 
-bool StackWalker::SetSymPath(LPCSTR szSymPath)
+bool StackWalker::SetSymPath(LPCSTR szSymPath) STKWLK_NOEXCEPT
 {
   if (m_szSymPath)
     free(m_szSymPath);
@@ -920,7 +920,7 @@ bool StackWalker::SetSymPath(LPCSTR szSymPath)
   return true;
 }
 
-bool StackWalker::SetTargetProcess(DWORD dwProcessId, HANDLE hProcess)
+bool StackWalker::SetTargetProcess(DWORD dwProcessId, HANDLE hProcess) STKWLK_NOEXCEPT
 {
   m_dwProcessId = dwProcessId;
   m_hProcess = hProcess;
@@ -929,12 +929,12 @@ bool StackWalker::SetTargetProcess(DWORD dwProcessId, HANDLE hProcess)
   return true;
 }
 
-PCONTEXT StackWalker::GetCurrentExceptionContext()
+PCONTEXT StackWalker::GetCurrentExceptionContext() STKWLK_NOEXCEPT
 {
   return get_current_exception_context();
 }
 
-BOOL StackWalker::LoadModules()
+BOOL StackWalker::LoadModules() STKWLK_NOEXCEPT
 {
   if (this->m_sw == NULL)
   {
@@ -1061,7 +1061,7 @@ static LPVOID                                 s_readMemoryFunction_UserData = NU
 BOOL StackWalker::ShowCallstack(HANDLE                    hThread,
                                 const CONTEXT*            context,
                                 PReadProcessMemoryRoutine readMemoryFunction,
-                                LPVOID                    pUserData)
+                                LPVOID                    pUserData) STKWLK_NOEXCEPT
 {
   CONTEXT                                   c;
   CallstackEntry                            csEntry;
@@ -1314,7 +1314,7 @@ cleanup:
   return TRUE;
 }
 
-BOOL StackWalker::ShowObject(LPVOID pObject)
+BOOL StackWalker::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
 {
   // Load modules if not done yet
   if (m_modulesLoaded == FALSE)
@@ -1357,7 +1357,7 @@ BOOL __stdcall StackWalker::myReadProcMem(HANDLE  hProcess,
                                           DWORD64 qwBaseAddress,
                                           PVOID   lpBuffer,
                                           DWORD   nSize,
-                                          LPDWORD lpNumberOfBytesRead)
+                                          LPDWORD lpNumberOfBytesRead) STKWLK_NOEXCEPT
 {
   if (s_readMemoryFunction == NULL)
   {
@@ -1381,7 +1381,7 @@ void StackWalker::OnLoadModule(LPCSTR    img,
                                DWORD     result,
                                LPCSTR    symType,
                                LPCSTR    pdbName,
-                               ULONGLONG fileVersion)
+                               ULONGLONG fileVersion) STKWLK_NOEXCEPT
 {
   CHAR   buffer[STACKWALK_MAX_NAMELEN];
   size_t maxLen = STACKWALK_MAX_NAMELEN;
@@ -1406,7 +1406,7 @@ void StackWalker::OnLoadModule(LPCSTR    img,
   OnOutput(buffer);
 }
 
-void StackWalker::OnCallstackEntry(CallstackEntryType eType, CallstackEntry& entry)
+void StackWalker::OnCallstackEntry(CallstackEntryType eType, CallstackEntry& entry) STKWLK_NOEXCEPT
 {
   CHAR   buffer[STACKWALK_MAX_NAMELEN];
   size_t maxLen = STACKWALK_MAX_NAMELEN;
@@ -1437,7 +1437,7 @@ void StackWalker::OnCallstackEntry(CallstackEntryType eType, CallstackEntry& ent
   }
 }
 
-void StackWalker::OnDbgHelpErr(LPCSTR szFuncName, DWORD gle, DWORD64 addr)
+void StackWalker::OnDbgHelpErr(LPCSTR szFuncName, DWORD gle, DWORD64 addr) STKWLK_NOEXCEPT
 {
   CHAR   buffer[STACKWALK_MAX_NAMELEN];
   size_t maxLen = STACKWALK_MAX_NAMELEN;
@@ -1450,7 +1450,7 @@ void StackWalker::OnDbgHelpErr(LPCSTR szFuncName, DWORD gle, DWORD64 addr)
   OnOutput(buffer);
 }
 
-void StackWalker::OnSymInit(LPCSTR szSearchPath, DWORD symOptions, LPCSTR szUserName)
+void StackWalker::OnSymInit(LPCSTR szSearchPath, DWORD symOptions, LPCSTR szUserName) STKWLK_NOEXCEPT
 {
   CHAR   buffer[STACKWALK_MAX_NAMELEN];
   size_t maxLen = STACKWALK_MAX_NAMELEN;
@@ -1495,7 +1495,7 @@ void StackWalker::OnSymInit(LPCSTR szSearchPath, DWORD symOptions, LPCSTR szUser
 #endif
 }
 
-void StackWalker::OnOutput(LPCSTR buffer)
+void StackWalker::OnOutput(LPCSTR buffer) STKWLK_NOEXCEPT
 {
   OutputDebugStringA(buffer);
 }

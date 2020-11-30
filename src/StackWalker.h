@@ -53,7 +53,17 @@ typedef unsigned long SIZE_T, *PSIZE_T;
 #endif
 #endif // _MSC_VER < 1300
 
+#ifndef STKWLK_THROWABLE
+#if _MSC_VER < 1900    /* noexcept added since vs2015 */
+#define STKWLK_NOEXCEPT throw()
+#else
+#define STKWLK_NOEXCEPT noexcept
+#endif
+#endif // STKWLK_NOEXCEPT
+
+
 class StackWalkerInternal; // forward
+
 class StackWalker
 {
 public:
@@ -98,26 +108,26 @@ public:
     OptionsAll = 0x3F
   } StackWalkOptions;
 
-  StackWalker(ExceptType extype, int options = OptionsAll, PEXCEPTION_POINTERS exp = NULL);
+  StackWalker(ExceptType extype, int options = OptionsAll, PEXCEPTION_POINTERS exp = NULL) STKWLK_NOEXCEPT;
 
   StackWalker(int    options = OptionsAll, // 'int' is by design, to combine the enum-flags
               LPCSTR szSymPath = NULL,
               DWORD  dwProcessId = GetCurrentProcessId(),
-              HANDLE hProcess = GetCurrentProcess());
+              HANDLE hProcess = GetCurrentProcess()) STKWLK_NOEXCEPT;
 
-  StackWalker(DWORD dwProcessId, HANDLE hProcess);
+  StackWalker(DWORD dwProcessId, HANDLE hProcess) STKWLK_NOEXCEPT;
 
-  virtual ~StackWalker();
+  virtual ~StackWalker() STKWLK_NOEXCEPT;
 
-  bool SetSymPath(LPCSTR szSymPath);
+  bool SetSymPath(LPCSTR szSymPath) STKWLK_NOEXCEPT;
 
-  bool SetTargetProcess(DWORD dwProcessId, HANDLE hProcess);
+  bool SetTargetProcess(DWORD dwProcessId, HANDLE hProcess) STKWLK_NOEXCEPT;
 
-  PCONTEXT GetCurrentExceptionContext();
+  PCONTEXT GetCurrentExceptionContext() STKWLK_NOEXCEPT;
 
 private:
   bool Init(ExceptType extype, int options, LPCSTR szSymPath, DWORD dwProcessId,
-            HANDLE hProcess, PEXCEPTION_POINTERS exp = NULL);
+            HANDLE hProcess, PEXCEPTION_POINTERS exp = NULL) STKWLK_NOEXCEPT;
 
 public:
   typedef BOOL(__stdcall* PReadProcessMemoryRoutine)(
@@ -129,16 +139,16 @@ public:
       LPVOID  pUserData // optional data, which was passed in "ShowCallstack"
   );
 
-  BOOL LoadModules();
+  BOOL LoadModules() STKWLK_NOEXCEPT;
 
   BOOL ShowCallstack(
       HANDLE                    hThread = GetCurrentThread(),
       const CONTEXT*            context = NULL,
       PReadProcessMemoryRoutine readMemoryFunction = NULL,
       LPVOID pUserData = NULL // optional to identify some data in the 'readMemoryFunction'-callback
-  );
+  ) STKWLK_NOEXCEPT;
 
-  BOOL ShowObject(LPVOID pObject);
+  BOOL ShowObject(LPVOID pObject) STKWLK_NOEXCEPT;
 
 #if _MSC_VER >= 1300
   // due to some reasons, the "STACKWALK_MAX_NAMELEN" must be declared as "public"
@@ -176,7 +186,7 @@ protected:
     lastEntry
   } CallstackEntryType;
 
-  virtual void OnSymInit(LPCSTR szSearchPath, DWORD symOptions, LPCSTR szUserName);
+  virtual void OnSymInit(LPCSTR szSearchPath, DWORD symOptions, LPCSTR szUserName) STKWLK_NOEXCEPT;
   virtual void OnLoadModule(LPCSTR    img,
                             LPCSTR    mod,
                             DWORD64   baseAddr,
@@ -184,10 +194,10 @@ protected:
                             DWORD     result,
                             LPCSTR    symType,
                             LPCSTR    pdbName,
-                            ULONGLONG fileVersion);
-  virtual void OnCallstackEntry(CallstackEntryType eType, CallstackEntry& entry);
-  virtual void OnDbgHelpErr(LPCSTR szFuncName, DWORD gle, DWORD64 addr);
-  virtual void OnOutput(LPCSTR szText);
+                            ULONGLONG fileVersion) STKWLK_NOEXCEPT;
+  virtual void OnCallstackEntry(CallstackEntryType eType, CallstackEntry& entry) STKWLK_NOEXCEPT;
+  virtual void OnDbgHelpErr(LPCSTR szFuncName, DWORD gle, DWORD64 addr) STKWLK_NOEXCEPT;
+  virtual void OnOutput(LPCSTR szText) STKWLK_NOEXCEPT;
 
   StackWalkerInternal* m_sw;
   HANDLE               m_hProcess;
@@ -202,7 +212,7 @@ protected:
                                       DWORD64 qwBaseAddress,
                                       PVOID   lpBuffer,
                                       DWORD   nSize,
-                                      LPDWORD lpNumberOfBytesRead);
+                                      LPDWORD lpNumberOfBytesRead) STKWLK_NOEXCEPT;
 
   friend StackWalkerInternal;
 }; // class StackWalker

@@ -33,7 +33,10 @@ void (*pGlobalFuncPtr)() = 0;
 class StackWalkerToConsole : public StackWalker
 {
 protected:
-  virtual void OnOutput(LPCSTR szText) { printf("%s", szText); }
+  virtual void OnOutput(LPCSTR szText) STKWLK_NOEXCEPT
+  {
+    printf("%s", szText);
+  }
 };
 
 void Func5()
