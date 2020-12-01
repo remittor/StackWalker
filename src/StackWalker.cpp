@@ -350,36 +350,39 @@ public:
     WCHAR szTemp[4096];
     // But before we do this, we first check if the ".local" file exists
     size_t len = GetModuleFileNameW(NULL, szTemp, _countof(szTemp));
-    if (len > 0 && len < _countof(szTemp)-64)
+    if (!m_hDbhHelp && len > 0 && len < _countof(szTemp)-64)
     {
       wcscat_s(szTemp, L".local");
       if (GetFileAttributesW(szTemp) == INVALID_FILE_ATTRIBUTES)
       {
-        WCHAR szProgDir[MAX_PATH];
-        size_t pdlen = GetEnvironmentVariableW(L"ProgramFiles", szProgDir, _countof(szProgDir));
-        if (pdlen >= _countof(szProgDir)-1)
-          pdlen = 0;
-
         // ".local" file does not exist, so we can try to load the dbghelp.dll from the "Debugging Tools for Windows"
         // Ok, first try the new path according to the architecture:
+        WCHAR szProgDir[MAX_PATH];
+        for (int i = 0; i <= 1; i++) {
+          LPCWSTR envname = (i == 0) ? L"ProgramFiles" : L"ProgramFiles(x86)";
+          size_t pdlen = GetEnvironmentVariableW(envname, szProgDir, _countof(szProgDir));
+          if (pdlen == 0 || pdlen >= _countof(szProgDir)-1)
+            continue;
 #ifdef _M_IX86
-        if ((m_hDbhHelp == NULL) && (pdlen > 0))
           m_hDbhHelp = LoadDbgHelpLib(true, szProgDir, L"Debugging Tools for Windows (x86)");
 #elif _M_X64
-        if ((m_hDbhHelp == NULL) && (pdlen > 0))
           m_hDbhHelp = LoadDbgHelpLib(true, szProgDir, L"Debugging Tools for Windows (x64)");
 #elif _M_IA64
-        if ((m_hDbhHelp == NULL) && (pdlen > 0))
           m_hDbhHelp = LoadDbgHelpLib(true, szProgDir, L"Debugging Tools for Windows (ia64)");
 #endif
-        // If still not found, try the old directories...
-        if ((m_hDbhHelp == NULL) && (pdlen > 0))
+          if (m_hDbhHelp)
+            break;
+          // If still not found, try the old directories...
           m_hDbhHelp = LoadDbgHelpLib(true, szProgDir, L"Debugging Tools for Windows");
+          if (m_hDbhHelp)
+            break;
 #if defined _M_X64 || defined _M_IA64
-        // Still not found? Then try to load the (old) 64-Bit version:
-        if ((m_hDbhHelp == NULL) && (pdlen > 0))
+          // Still not found? Then try to load the (old) 64-Bit version:
           m_hDbhHelp = LoadDbgHelpLib(true, szProgDir, L"Debugging Tools for Windows 64-Bit");
+          if (m_hDbhHelp)
+            break;
 #endif
+        } // for
       }
     }
     if (m_hDbhHelp == NULL) // if not already loaded, try to load a default-one
