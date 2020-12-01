@@ -264,6 +264,57 @@ static LPVOID GetProcAddrEx(int & counter, HMODULE hLib, LPCSTR name, LPVOID * p
   return proc;
 }
 
+static errno_t MyPathCat(LPWSTR path, size_t capacity, LPCWSTR addon, bool isDir)
+{
+  errno_t rc = wcscat_s(path, capacity, addon);
+  if (rc)
+    return rc;
+  size_t len = wcslen(path);
+  if (path[len - 1] == L'\\')
+    return 0;
+  if (isDir)
+    return wcscat_s(path, capacity, L"\\");
+  LPWSTR p = wcsrchr(path, L'\\');
+  if (p)
+    p[1] = 0;
+  return 0;
+}
+
+static HMODULE LoadDbgHelpLib(bool prefixIsDir, LPCWSTR prefix, LPCWSTR path)
+{
+  WCHAR buf[2048];
+  wcscpy_s(buf, L"\\\\?\\");   // for long path support
+  if (prefix)
+  {
+    errno_t rc = MyPathCat(buf, _countof(buf), prefix, prefixIsDir);
+    if (rc)
+      return NULL;
+  }
+  if (path)
+  {
+    if (path[0] == L'\\')
+      path++;
+    errno_t rc = MyPathCat(buf, _countof(buf), path, true);
+    if (rc)
+      return NULL;
+  }
+  errno_t rc = wcscat_s(buf, L"dbghelp.dll");
+  if (rc)
+    return NULL;
+  size_t len = wcslen(buf);
+  LPCWSTR libpath = (len < MAX_PATH) ? buf + 4 : buf;
+  if (GetFileAttributesW(libpath) == INVALID_FILE_ATTRIBUTES)
+    return NULL;
+  HMODULE hLib = LoadLibraryW(libpath);
+  if (!hLib)
+    return NULL;
+  LPVOID fn = GetProcAddress(hLib, "StackWalk64");
+  if (fn != NULL)
+    return hLib;
+  FreeLibrary(hLib);
+  return NULL;
+}
+
 
 class StackWalkerInternal
 {
@@ -313,60 +364,21 @@ public:
         // Ok, first try the new path according to the architecture:
 #ifdef _M_IX86
         if ((m_hDbhHelp == NULL) && (pdlen > 0))
-        {
-          wcscat_s(szTemp, szProgDir);
-          wcscat_s(szTemp, L"\\Debugging Tools for Windows (x86)\\dbghelp.dll");
-          // now check if the file exists:
-          if (GetFileAttributesW(szTemp) != INVALID_FILE_ATTRIBUTES)
-          {
-            m_hDbhHelp = LoadLibraryW(szTemp);
-          }
-        }
+          m_hDbhHelp = LoadDbgHelpLib(true, szProgDir, L"Debugging Tools for Windows (x86)");
 #elif _M_X64
         if ((m_hDbhHelp == NULL) && (pdlen > 0))
-        {
-          wcscat_s(szTemp, szProgDir);
-          wcscat_s(szTemp, L"\\Debugging Tools for Windows (x64)\\dbghelp.dll");
-          // now check if the file exists:
-          if (GetFileAttributesW(szTemp) != INVALID_FILE_ATTRIBUTES)
-          {
-            m_hDbhHelp = LoadLibraryW(szTemp);
-          }
-        }
+          m_hDbhHelp = LoadDbgHelpLib(true, szProgDir, L"Debugging Tools for Windows (x64)");
 #elif _M_IA64
         if ((m_hDbhHelp == NULL) && (pdlen > 0))
-        {
-          wcscat_s(szTemp, szProgDir);
-          wcscat_s(szTemp, L"\\Debugging Tools for Windows (ia64)\\dbghelp.dll"));
-          // now check if the file exists:
-          if (GetFileAttributesW(szTemp) != INVALID_FILE_ATTRIBUTES)
-          {
-            m_hDbhHelp = LoadLibraryW(szTemp);
-          }
-        }
+          m_hDbhHelp = LoadDbgHelpLib(true, szProgDir, L"Debugging Tools for Windows (ia64)");
 #endif
         // If still not found, try the old directories...
         if ((m_hDbhHelp == NULL) && (pdlen > 0))
-        {
-          wcscat_s(szTemp, szProgDir);
-          wcscat_s(szTemp, L"\\Debugging Tools for Windows\\dbghelp.dll");
-          // now check if the file exists:
-          if (GetFileAttributesW(szTemp) != INVALID_FILE_ATTRIBUTES)
-          {
-            m_hDbhHelp = LoadLibraryW(szTemp);
-          }
-        }
+          m_hDbhHelp = LoadDbgHelpLib(true, szProgDir, L"Debugging Tools for Windows");
 #if defined _M_X64 || defined _M_IA64
         // Still not found? Then try to load the (old) 64-Bit version:
         if ((m_hDbhHelp == NULL) && (pdlen > 0))
-        {
-          wcscat_s(szTemp, szProgDir);
-          wcscat_s(szTemp, L"\\Debugging Tools for Windows 64-Bit\\dbghelp.dll");
-          if (GetFileAttributesW(szTemp) != INVALID_FILE_ATTRIBUTES)
-          {
-            m_hDbhHelp = LoadLibraryW(szTemp);
-          }
-        }
+          m_hDbhHelp = LoadDbgHelpLib(true, szProgDir, L"Debugging Tools for Windows 64-Bit");
 #endif
       }
     }
