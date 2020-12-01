@@ -120,6 +120,8 @@ public:
   virtual ~StackWalker() STKWLK_NOEXCEPT;
 
   bool SetSymPath(LPCSTR szSymPath) STKWLK_NOEXCEPT;
+  
+  bool SetDbgHelpPath(LPCWSTR szDllPath) STKWLK_NOEXCEPT;
 
   bool SetTargetProcess(DWORD dwProcessId, HANDLE hProcess) STKWLK_NOEXCEPT;
 
@@ -204,6 +206,7 @@ protected:
   DWORD                m_dwProcessId;
   BOOL                 m_modulesLoaded;
   LPSTR                m_szSymPath;
+  LPCWSTR              m_szDbgHelpPath;
 
   int m_options;
   int m_MaxRecursionCount;

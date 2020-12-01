@@ -345,6 +345,10 @@ public:
   {
     if (m_parent == NULL)
       return FALSE;
+
+    if (!m_hDbhHelp && m_parent->m_szDbgHelpPath)
+      m_hDbhHelp = LoadLibraryW(m_parent->m_szDbgHelpPath);
+
     // Dynamically load the Entry-Points for dbghelp.dll:
     // First try to load the newest one from
     WCHAR szTemp[4096];
@@ -908,6 +912,7 @@ bool StackWalker::Init(ExceptType extype, int options, LPCSTR szSymPath, DWORD d
   this->m_options = options;
   this->m_modulesLoaded = FALSE;
   this->m_szSymPath = NULL;
+  this->m_szDbgHelpPath = NULL;
   this->m_MaxRecursionCount = 1000;
   this->m_sw = NULL;
   SetTargetProcess(dwProcessId, hProcess);
@@ -938,12 +943,13 @@ StackWalker::StackWalker(ExceptType extype, int options, PEXCEPTION_POINTERS exp
 
 StackWalker::~StackWalker() STKWLK_NOEXCEPT
 {
-  SetSymPath(NULL);
   if (m_sw != NULL) {
     m_sw->~StackWalkerInternal();  // call the object's destructor
     free(m_sw);
   }
   m_sw = NULL;
+  SetSymPath(NULL);
+  SetDbgHelpPath(NULL);
 }
 
 bool StackWalker::SetSymPath(LPCSTR szSymPath) STKWLK_NOEXCEPT
@@ -956,7 +962,18 @@ bool StackWalker::SetSymPath(LPCSTR szSymPath) STKWLK_NOEXCEPT
   m_szSymPath = _strdup(szSymPath);
   if (m_szSymPath)
     m_options |= SymBuildPath;
-  return true;
+  return m_szSymPath ? true : false;
+}
+
+bool StackWalker::SetDbgHelpPath(LPCWSTR szDllPath) STKWLK_NOEXCEPT
+{
+  if (m_szDbgHelpPath)
+    free((LPVOID)m_szDbgHelpPath);
+  m_szDbgHelpPath = NULL;
+  if (szDllPath == NULL)
+    return true;
+  m_szDbgHelpPath = (LPCWSTR)_wcsdup(szDllPath);
+  return m_szDbgHelpPath ? true : false;
 }
 
 bool StackWalker::SetTargetProcess(DWORD dwProcessId, HANDLE hProcess) STKWLK_NOEXCEPT
