@@ -86,7 +86,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <tchar.h>
 #include <windows.h>
 #include <new>
 
@@ -95,6 +94,10 @@
 #pragma warning(disable : 4826)
 #if _MSC_VER >= 1900
 #pragma warning(disable : 4091)   // For fix unnamed enums from DbgHelp.h
+#endif
+
+#ifndef _countof
+#define _countof(_Array) (sizeof(_Array) / sizeof(_Array[0]))
 #endif
 
 
@@ -293,71 +296,72 @@ public:
       return FALSE;
     // Dynamically load the Entry-Points for dbghelp.dll:
     // First try to load the newest one from
-    TCHAR szTemp[4096];
+    WCHAR szTemp[4096];
     // But before we do this, we first check if the ".local" file exists
-    if (GetModuleFileName(NULL, szTemp, 4096) > 0)
+    if (GetModuleFileNameW(NULL, szTemp, _countof(szTemp)-1) > 0)
     {
-      _tcscat_s(szTemp, _T(".local"));
-      if (GetFileAttributes(szTemp) == INVALID_FILE_ATTRIBUTES)
+      wcscat_s(szTemp, L".local");
+      if (GetFileAttributesW(szTemp) == INVALID_FILE_ATTRIBUTES)
       {
         // ".local" file does not exist, so we can try to load the dbghelp.dll from the "Debugging Tools for Windows"
         // Ok, first try the new path according to the architecture:
 #ifdef _M_IX86
-        if ((m_hDbhHelp == NULL) && (GetEnvironmentVariable(_T("ProgramFiles"), szTemp, 4096) > 0))
+        if ((m_hDbhHelp == NULL) && (GetEnvironmentVariableW(L"ProgramFiles", szTemp, _countof(szTemp)-1) > 0))
         {
-          _tcscat_s(szTemp, _T("\\Debugging Tools for Windows (x86)\\dbghelp.dll"));
+          wcscat_s(szTemp, L"\\Debugging Tools for Windows (x86)\\dbghelp.dll");
           // now check if the file exists:
-          if (GetFileAttributes(szTemp) != INVALID_FILE_ATTRIBUTES)
+          if (GetFileAttributesW(szTemp) != INVALID_FILE_ATTRIBUTES)
           {
-            m_hDbhHelp = LoadLibrary(szTemp);
+            m_hDbhHelp = LoadLibraryW(szTemp);
           }
         }
 #elif _M_X64
-        if ((m_hDbhHelp == NULL) && (GetEnvironmentVariable(_T("ProgramFiles"), szTemp, 4096) > 0))
+        if ((m_hDbhHelp == NULL) && (GetEnvironmentVariableW(L"ProgramFiles", szTemp, _countof(szTemp)-1) > 0))
         {
-          _tcscat_s(szTemp, _T("\\Debugging Tools for Windows (x64)\\dbghelp.dll"));
+          wcscat_s(szTemp, L"\\Debugging Tools for Windows (x64)\\dbghelp.dll");
           // now check if the file exists:
-          if (GetFileAttributes(szTemp) != INVALID_FILE_ATTRIBUTES)
+          if (GetFileAttributesW(szTemp) != INVALID_FILE_ATTRIBUTES)
           {
-            m_hDbhHelp = LoadLibrary(szTemp);
+            m_hDbhHelp = LoadLibraryW(szTemp);
           }
         }
 #elif _M_IA64
-        if ((m_hDbhHelp == NULL) && (GetEnvironmentVariable(_T("ProgramFiles"), szTemp, 4096) > 0))
+        if ((m_hDbhHelp == NULL) && (GetEnvironmentVariableW(L"ProgramFiles", szTemp, _countof(szTemp)-1) > 0))
         {
-          _tcscat_s(szTemp, _T("\\Debugging Tools for Windows (ia64)\\dbghelp.dll"));
+          wcscat_s(szTemp, L"\\Debugging Tools for Windows (ia64)\\dbghelp.dll"));
           // now check if the file exists:
-          if (GetFileAttributes(szTemp) != INVALID_FILE_ATTRIBUTES)
+          if (GetFileAttributesW(szTemp) != INVALID_FILE_ATTRIBUTES)
           {
-            m_hDbhHelp = LoadLibrary(szTemp);
+            m_hDbhHelp = LoadLibraryW(szTemp);
           }
         }
 #endif
         // If still not found, try the old directories...
-        if ((m_hDbhHelp == NULL) && (GetEnvironmentVariable(_T("ProgramFiles"), szTemp, 4096) > 0))
+        if ((m_hDbhHelp == NULL) && (GetEnvironmentVariableW(L"ProgramFiles", szTemp, _countof(szTemp)-1) > 0))
         {
-          _tcscat_s(szTemp, _T("\\Debugging Tools for Windows\\dbghelp.dll"));
+          wcscat_s(szTemp, L"\\Debugging Tools for Windows\\dbghelp.dll");
           // now check if the file exists:
-          if (GetFileAttributes(szTemp) != INVALID_FILE_ATTRIBUTES)
+          if (GetFileAttributesW(szTemp) != INVALID_FILE_ATTRIBUTES)
           {
-            m_hDbhHelp = LoadLibrary(szTemp);
+            m_hDbhHelp = LoadLibraryW(szTemp);
           }
         }
 #if defined _M_X64 || defined _M_IA64
         // Still not found? Then try to load the (old) 64-Bit version:
-        if ((m_hDbhHelp == NULL) && (GetEnvironmentVariable(_T("ProgramFiles"), szTemp, 4096) > 0))
+        if ((m_hDbhHelp == NULL) && (GetEnvironmentVariableW(L"ProgramFiles", szTemp, _countof(szTemp)-1) > 0))
         {
-          _tcscat_s(szTemp, _T("\\Debugging Tools for Windows 64-Bit\\dbghelp.dll"));
-          if (GetFileAttributes(szTemp) != INVALID_FILE_ATTRIBUTES)
+          wcscat_s(szTemp, L"\\Debugging Tools for Windows 64-Bit\\dbghelp.dll");
+          if (GetFileAttributesW(szTemp) != INVALID_FILE_ATTRIBUTES)
           {
-            m_hDbhHelp = LoadLibrary(szTemp);
+            m_hDbhHelp = LoadLibraryW(szTemp);
           }
         }
 #endif
       }
     }
     if (m_hDbhHelp == NULL) // if not already loaded, try to load a default-one
-      m_hDbhHelp = LoadLibrary(_T("dbghelp.dll"));
+      m_hDbhHelp = LoadLibraryW(L"dbghelp.dll");
+
     if (m_hDbhHelp == NULL)
       return FALSE;
     
@@ -544,7 +548,7 @@ private:
   BOOL GetModuleListTH32(HANDLE hProcess, DWORD pid) STKWLK_NOEXCEPT
   {
     // try both dlls...
-    const TCHAR* dllname[] = {_T("kernel32.dll"), _T("tlhelp32.dll")};
+    const WCHAR* dllname[] = { L"kernel32.dll", L"tlhelp32.dll" };
     HINSTANCE    hToolhelp = NULL;
     HANDLE (WINAPI * CreateTH32Snapshot)(DWORD dwFlags, DWORD th32ProcessID);
     BOOL (WINAPI * Module32First)(HANDLE hSnapshot, LPMODULEENTRY32 lpme);
@@ -555,7 +559,7 @@ private:
 
     for (size_t i = 0; i < (sizeof(dllname) / sizeof(dllname[0])); i++)
     {
-      hToolhelp = LoadLibrary(dllname[i]);
+      hToolhelp = LoadLibraryW(dllname[i]);
       if (hToolhelp == NULL)
         continue;
       int fcnt = 0;
@@ -620,7 +624,7 @@ private:
     const SIZE_T TTBUFLEN = 8096;
     int          cnt = 0;
 
-    hPsapi = LoadLibrary(_T("psapi.dll"));
+    hPsapi = LoadLibraryW(L"psapi.dll");
     if (hPsapi == NULL)
       return FALSE;
 
@@ -713,8 +717,8 @@ private:
             if (GetFileVersionInfoA(szImg, dwHandle, dwSize, vData) != 0)
             {
               UINT  len;
-              TCHAR szSubBlock[] = _T("\\");
-              if (VerQueryValue(vData, szSubBlock, (LPVOID*)&fInfo, &len) == 0)
+              CHAR  szSubBlock[] = "\\";
+              if (VerQueryValueA(vData, szSubBlock, (LPVOID*)&fInfo, &len) == 0)
                 fInfo = NULL;
               else
               {
