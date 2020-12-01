@@ -364,6 +364,15 @@ public:
           if (pdlen == 0 || pdlen >= _countof(szProgDir)-1)
             continue;
 #ifdef _M_IX86
+          m_hDbhHelp = LoadDbgHelpLib(true, szProgDir, L"Windows Kits\\10\\Debuggers\\x86");
+#elif _M_X64
+          m_hDbhHelp = LoadDbgHelpLib(true, szProgDir, L"Windows Kits\\10\\Debuggers\\x64");
+#elif _M_IA64
+          m_hDbhHelp = LoadDbgHelpLib(true, szProgDir, L"Windows Kits\\10\\Debuggers\\ia64");
+#endif
+          if (m_hDbhHelp)
+            break;
+#ifdef _M_IX86
           m_hDbhHelp = LoadDbgHelpLib(true, szProgDir, L"Debugging Tools for Windows (x86)");
 #elif _M_X64
           m_hDbhHelp = LoadDbgHelpLib(true, szProgDir, L"Debugging Tools for Windows (x64)");
