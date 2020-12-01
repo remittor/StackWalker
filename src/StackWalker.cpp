@@ -87,6 +87,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <windows.h>
+#include <errno.h>
 #include <new>
 
 #pragma comment(lib, "version.lib") // for "VerQueryValue"
@@ -236,24 +237,52 @@ typedef DWORD64(__stdcall* PTRANSLATE_ADDRESS_ROUTINE64)(HANDLE      hProcess,
 #define INVALID_FILE_ATTRIBUTES ((DWORD)-1)
 #endif
 
-// secure-CRT_functions are only available starting with VC8
+// secure-CRT_functions are only available starting with VC8 (MSVC2005)
 #if _MSC_VER < 1400
 #define strcpy_s(dst, len, src) strcpy(dst, src)
 #define strncpy_s(dst, len, src, maxLen) strncpy(dst, len, src)
 #define strcat_s(dst, len, src) strcat(dst, src)
+#define strncat_s(dst, len, src, maxLen) strncat(dst, len, src)
 #define _snprintf_s _snprintf
-#define _tcscat_s _tcscat
 #endif
 
-static void MyStrCpy(char* szDest, size_t nMaxDestSize, const char* szSrc) STKWLK_NOEXCEPT
+static errno_t MyStrCpy(LPSTR szDest, size_t nMaxDestSize, LPCSTR szSrc) STKWLK_NOEXCEPT
 {
-  if (nMaxDestSize <= 0)
-    return;
-  strncpy_s(szDest, nMaxDestSize, szSrc, _TRUNCATE);
+  if (nMaxDestSize == 0 || szSrc == NULL)
+    return EINVAL;
+  errno_t rc = strncpy_s(szDest, nMaxDestSize, szSrc, _TRUNCATE);
   // INFO: _TRUNCATE will ensure that it is null-terminated;
   // but with older compilers (<1400) it uses "strncpy" and this does not!)
   szDest[nMaxDestSize - 1] = 0;
-} // MyStrCpy
+  return rc;
+}
+
+static errno_t MyStrCpy(LPWSTR szDest, size_t nMaxDestSize, LPCWSTR szSrc) STKWLK_NOEXCEPT
+{
+  if (nMaxDestSize == 0 || szSrc == NULL)
+    return EINVAL;
+  errno_t rc = wcsncpy_s(szDest, nMaxDestSize, szSrc, _TRUNCATE);
+  szDest[nMaxDestSize - 1] = 0;
+  return rc;
+}
+
+static errno_t MyStrCat(LPSTR szDest, size_t nMaxDestSize, LPCSTR szSrc) STKWLK_NOEXCEPT
+{
+  if (nMaxDestSize == 0 || szSrc == NULL)
+    return EINVAL;
+  errno_t rc = strncat_s(szDest, nMaxDestSize, szSrc, _TRUNCATE);
+  szDest[nMaxDestSize - 1] = 0;
+  return rc;
+}
+
+static errno_t MyStrCat(LPWSTR szDest, size_t nMaxDestSize, LPCWSTR szSrc) STKWLK_NOEXCEPT
+{
+  if (nMaxDestSize == 0 || szSrc == NULL)
+    return EINVAL;
+  errno_t rc = wcsncat_s(szDest, nMaxDestSize, szSrc, _TRUNCATE);
+  szDest[nMaxDestSize - 1] = 0;
+  return rc;
+}
 
 static LPVOID GetProcAddrEx(int & counter, HMODULE hLib, LPCSTR name, LPVOID * ptr = NULL) STKWLK_NOEXCEPT
 {
@@ -266,14 +295,14 @@ static LPVOID GetProcAddrEx(int & counter, HMODULE hLib, LPCSTR name, LPVOID * p
 
 static errno_t MyPathCat(LPWSTR path, size_t capacity, LPCWSTR addon, bool isDir)
 {
-  errno_t rc = wcscat_s(path, capacity, addon);
+  errno_t rc = MyStrCat(path, capacity, addon);
   if (rc)
     return rc;
   size_t len = wcslen(path);
   if (path[len - 1] == L'\\')
     return 0;
   if (isDir)
-    return wcscat_s(path, capacity, L"\\");
+    return MyStrCat(path, capacity, L"\\");
   LPWSTR p = wcsrchr(path, L'\\');
   if (p)
     p[1] = 0;
@@ -298,7 +327,7 @@ static HMODULE LoadDbgHelpLib(bool prefixIsDir, LPCWSTR prefix, LPCWSTR path)
     if (rc)
       return NULL;
   }
-  errno_t rc = wcscat_s(buf, L"dbghelp.dll");
+  errno_t rc = MyStrCat(buf, _countof(buf), L"dbghelp.dll");
   if (rc)
     return NULL;
   size_t len = wcslen(buf);
@@ -356,7 +385,7 @@ public:
     size_t len = GetModuleFileNameW(NULL, szTemp, _countof(szTemp));
     if (!m_hDbhHelp && len > 0 && len < _countof(szTemp)-64)
     {
-      wcscat_s(szTemp, L".local");
+      MyStrCat(szTemp, _countof(szTemp), L".local");
       if (GetFileAttributesW(szTemp) == INVALID_FILE_ATTRIBUTES)
       {
         // ".local" file does not exist, so we can try to load the dbghelp.dll from the "Debugging Tools for Windows"
@@ -1015,11 +1044,11 @@ BOOL StackWalker::LoadModules() STKWLK_NOEXCEPT
     // Now first add the (optional) provided sympath:
     if (this->m_szSymPath != NULL)
     {
-      strcat_s(szSymPath, nSymPathLen, this->m_szSymPath);
-      strcat_s(szSymPath, nSymPathLen, ";");
+      MyStrCat(szSymPath, nSymPathLen, this->m_szSymPath);
+      MyStrCat(szSymPath, nSymPathLen, ";");
     }
 
-    strcat_s(szSymPath, nSymPathLen, ".;");
+    MyStrCat(szSymPath, nSymPathLen, ".;");
 
     size_t len;
     const size_t nTempLen = 1024;
@@ -1028,8 +1057,8 @@ BOOL StackWalker::LoadModules() STKWLK_NOEXCEPT
     len = GetCurrentDirectoryA(nTempLen, szTemp);
     if (len > 0 && len < nTempLen-1)
     {
-      strcat_s(szSymPath, nSymPathLen, szTemp);
-      strcat_s(szSymPath, nSymPathLen, ";");
+      MyStrCat(szSymPath, nSymPathLen, szTemp);
+      MyStrCat(szSymPath, nSymPathLen, ";");
     }
 
     // Now add the path for the main-module:
@@ -1047,31 +1076,31 @@ BOOL StackWalker::LoadModules() STKWLK_NOEXCEPT
       } // for (search for path separator...)
       if (strlen(szTemp) > 0)
       {
-        strcat_s(szSymPath, nSymPathLen, szTemp);
-        strcat_s(szSymPath, nSymPathLen, ";");
+        MyStrCat(szSymPath, nSymPathLen, szTemp);
+        MyStrCat(szSymPath, nSymPathLen, ";");
       }
     }
     len = GetEnvironmentVariableA("_NT_SYMBOL_PATH", szTemp, nTempLen);
     if (len > 0 && len < nTempLen-1)
     {
-      strcat_s(szSymPath, nSymPathLen, szTemp);
-      strcat_s(szSymPath, nSymPathLen, ";");
+      MyStrCat(szSymPath, nSymPathLen, szTemp);
+      MyStrCat(szSymPath, nSymPathLen, ";");
     }
     len = GetEnvironmentVariableA("_NT_ALTERNATE_SYMBOL_PATH", szTemp, nTempLen);
     if (len > 0 && len < nTempLen-1)
     {
-      strcat_s(szSymPath, nSymPathLen, szTemp);
-      strcat_s(szSymPath, nSymPathLen, ";");
+      MyStrCat(szSymPath, nSymPathLen, szTemp);
+      MyStrCat(szSymPath, nSymPathLen, ";");
     }
     len = GetEnvironmentVariableA("SYSTEMROOT", szTemp, nTempLen);
     if (len > 0 && len < nTempLen-1)
     {
-      strcat_s(szSymPath, nSymPathLen, szTemp);
-      strcat_s(szSymPath, nSymPathLen, ";");
+      MyStrCat(szSymPath, nSymPathLen, szTemp);
+      MyStrCat(szSymPath, nSymPathLen, ";");
       // also add the "system32"-directory:
-      strcat_s(szTemp, nTempLen, "\\system32");
-      strcat_s(szSymPath, nSymPathLen, szTemp);
-      strcat_s(szSymPath, nSymPathLen, ";");
+      MyStrCat(szTemp, nTempLen, "\\system32");
+      MyStrCat(szSymPath, nSymPathLen, szTemp);
+      MyStrCat(szSymPath, nSymPathLen, ";");
     }
 
     if ((this->m_options & SymUseSymSrv) != 0)
@@ -1082,10 +1111,10 @@ BOOL StackWalker::LoadModules() STKWLK_NOEXCEPT
       {
         drive = szTemp;
       }
-      strcat_s(szSymPath, nSymPathLen, "SRV*");
-      strcat_s(szSymPath, nSymPathLen, szTemp);
-      strcat_s(szSymPath, nSymPathLen, "\\websymbols*");
-      strcat_s(szSymPath, nSymPathLen, "https://msdl.microsoft.com/download/symbols;");
+      MyStrCat(szSymPath, nSymPathLen, "SRV*");
+      MyStrCat(szSymPath, nSymPathLen, szTemp);
+      MyStrCat(szSymPath, nSymPathLen, "\\websymbols*");
+      MyStrCat(szSymPath, nSymPathLen, "https://msdl.microsoft.com/download/symbols;");
     }
   } // if SymBuildPath
 
