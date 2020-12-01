@@ -298,16 +298,23 @@ public:
     // First try to load the newest one from
     WCHAR szTemp[4096];
     // But before we do this, we first check if the ".local" file exists
-    if (GetModuleFileNameW(NULL, szTemp, _countof(szTemp)-1) > 0)
+    size_t len = GetModuleFileNameW(NULL, szTemp, _countof(szTemp));
+    if (len > 0 && len < _countof(szTemp)-64)
     {
       wcscat_s(szTemp, L".local");
       if (GetFileAttributesW(szTemp) == INVALID_FILE_ATTRIBUTES)
       {
+        WCHAR szProgDir[MAX_PATH];
+        size_t pdlen = GetEnvironmentVariableW(L"ProgramFiles", szProgDir, _countof(szProgDir));
+        if (pdlen >= _countof(szProgDir)-1)
+          pdlen = 0;
+
         // ".local" file does not exist, so we can try to load the dbghelp.dll from the "Debugging Tools for Windows"
         // Ok, first try the new path according to the architecture:
 #ifdef _M_IX86
-        if ((m_hDbhHelp == NULL) && (GetEnvironmentVariableW(L"ProgramFiles", szTemp, _countof(szTemp)-1) > 0))
+        if ((m_hDbhHelp == NULL) && (pdlen > 0))
         {
+          wcscat_s(szTemp, szProgDir);
           wcscat_s(szTemp, L"\\Debugging Tools for Windows (x86)\\dbghelp.dll");
           // now check if the file exists:
           if (GetFileAttributesW(szTemp) != INVALID_FILE_ATTRIBUTES)
@@ -316,8 +323,9 @@ public:
           }
         }
 #elif _M_X64
-        if ((m_hDbhHelp == NULL) && (GetEnvironmentVariableW(L"ProgramFiles", szTemp, _countof(szTemp)-1) > 0))
+        if ((m_hDbhHelp == NULL) && (pdlen > 0))
         {
+          wcscat_s(szTemp, szProgDir);
           wcscat_s(szTemp, L"\\Debugging Tools for Windows (x64)\\dbghelp.dll");
           // now check if the file exists:
           if (GetFileAttributesW(szTemp) != INVALID_FILE_ATTRIBUTES)
@@ -326,8 +334,9 @@ public:
           }
         }
 #elif _M_IA64
-        if ((m_hDbhHelp == NULL) && (GetEnvironmentVariableW(L"ProgramFiles", szTemp, _countof(szTemp)-1) > 0))
+        if ((m_hDbhHelp == NULL) && (pdlen > 0))
         {
+          wcscat_s(szTemp, szProgDir);
           wcscat_s(szTemp, L"\\Debugging Tools for Windows (ia64)\\dbghelp.dll"));
           // now check if the file exists:
           if (GetFileAttributesW(szTemp) != INVALID_FILE_ATTRIBUTES)
@@ -337,8 +346,9 @@ public:
         }
 #endif
         // If still not found, try the old directories...
-        if ((m_hDbhHelp == NULL) && (GetEnvironmentVariableW(L"ProgramFiles", szTemp, _countof(szTemp)-1) > 0))
+        if ((m_hDbhHelp == NULL) && (pdlen > 0))
         {
+          wcscat_s(szTemp, szProgDir);
           wcscat_s(szTemp, L"\\Debugging Tools for Windows\\dbghelp.dll");
           // now check if the file exists:
           if (GetFileAttributesW(szTemp) != INVALID_FILE_ATTRIBUTES)
@@ -348,8 +358,9 @@ public:
         }
 #if defined _M_X64 || defined _M_IA64
         // Still not found? Then try to load the (old) 64-Bit version:
-        if ((m_hDbhHelp == NULL) && (GetEnvironmentVariableW(L"ProgramFiles", szTemp, _countof(szTemp)-1) > 0))
+        if ((m_hDbhHelp == NULL) && (pdlen > 0))
         {
+          wcscat_s(szTemp, szProgDir);
           wcscat_s(szTemp, L"\\Debugging Tools for Windows 64-Bit\\dbghelp.dll");
           if (GetFileAttributesW(szTemp) != INVALID_FILE_ATTRIBUTES)
           {
@@ -969,20 +980,21 @@ BOOL StackWalker::LoadModules() STKWLK_NOEXCEPT
 
     strcat_s(szSymPath, nSymPathLen, ".;");
 
+    size_t len;
     const size_t nTempLen = 1024;
     char         szTemp[nTempLen];
     // Now add the current directory:
-    if (GetCurrentDirectoryA(nTempLen, szTemp) > 0)
+    len = GetCurrentDirectoryA(nTempLen, szTemp);
+    if (len > 0 && len < nTempLen-1)
     {
-      szTemp[nTempLen - 1] = 0;
       strcat_s(szSymPath, nSymPathLen, szTemp);
       strcat_s(szSymPath, nSymPathLen, ";");
     }
 
     // Now add the path for the main-module:
-    if (GetModuleFileNameA(NULL, szTemp, nTempLen) > 0)
+    len = GetModuleFileNameA(NULL, szTemp, nTempLen);
+    if (len > 0 && len < nTempLen-1)
     {
-      szTemp[nTempLen - 1] = 0;
       for (char* p = (szTemp + strlen(szTemp) - 1); p >= szTemp; --p)
       {
         // locate the rightmost path separator
@@ -998,21 +1010,21 @@ BOOL StackWalker::LoadModules() STKWLK_NOEXCEPT
         strcat_s(szSymPath, nSymPathLen, ";");
       }
     }
-    if (GetEnvironmentVariableA("_NT_SYMBOL_PATH", szTemp, nTempLen) > 0)
+    len = GetEnvironmentVariableA("_NT_SYMBOL_PATH", szTemp, nTempLen);
+    if (len > 0 && len < nTempLen-1)
     {
-      szTemp[nTempLen - 1] = 0;
       strcat_s(szSymPath, nSymPathLen, szTemp);
       strcat_s(szSymPath, nSymPathLen, ";");
     }
-    if (GetEnvironmentVariableA("_NT_ALTERNATE_SYMBOL_PATH", szTemp, nTempLen) > 0)
+    len = GetEnvironmentVariableA("_NT_ALTERNATE_SYMBOL_PATH", szTemp, nTempLen);
+    if (len > 0 && len < nTempLen-1)
     {
-      szTemp[nTempLen - 1] = 0;
       strcat_s(szSymPath, nSymPathLen, szTemp);
       strcat_s(szSymPath, nSymPathLen, ";");
     }
-    if (GetEnvironmentVariableA("SYSTEMROOT", szTemp, nTempLen) > 0)
+    len = GetEnvironmentVariableA("SYSTEMROOT", szTemp, nTempLen);
+    if (len > 0 && len < nTempLen-1)
     {
-      szTemp[nTempLen - 1] = 0;
       strcat_s(szSymPath, nSymPathLen, szTemp);
       strcat_s(szSymPath, nSymPathLen, ";");
       // also add the "system32"-directory:
@@ -1023,17 +1035,16 @@ BOOL StackWalker::LoadModules() STKWLK_NOEXCEPT
 
     if ((this->m_options & SymUseSymSrv) != 0)
     {
-      if (GetEnvironmentVariableA("SYSTEMDRIVE", szTemp, nTempLen) > 0)
+      LPCSTR drive = "c:\\";
+      len = GetEnvironmentVariableA("SYSTEMDRIVE", szTemp, nTempLen);
+      if (len > 0 && len < nTempLen-1)
       {
-        szTemp[nTempLen - 1] = 0;
-        strcat_s(szSymPath, nSymPathLen, "SRV*");
-        strcat_s(szSymPath, nSymPathLen, szTemp);
-        strcat_s(szSymPath, nSymPathLen, "\\websymbols");
-        strcat_s(szSymPath, nSymPathLen, "*https://msdl.microsoft.com/download/symbols;");
+        drive = szTemp;
       }
-      else
-        strcat_s(szSymPath, nSymPathLen,
-                 "SRV*c:\\websymbols*https://msdl.microsoft.com/download/symbols;");
+      strcat_s(szSymPath, nSymPathLen, "SRV*");
+      strcat_s(szSymPath, nSymPathLen, szTemp);
+      strcat_s(szSymPath, nSymPathLen, "\\websymbols*");
+      strcat_s(szSymPath, nSymPathLen, "https://msdl.microsoft.com/download/symbols;");
     }
   } // if SymBuildPath
 
