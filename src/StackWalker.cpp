@@ -91,6 +91,9 @@
 
 #pragma comment(lib, "version.lib") // for "VerQueryValue"
 
+// Normally it should be enough to use 'CONTEXT_FULL' (better would be 'CONTEXT_ALL')
+#define STKWLK_CONTEXT_FLAGS CONTEXT_FULL
+
 #pragma warning(disable : 4826)
 #if _MSC_VER >= 1900
 #pragma warning(disable : 4091)   // For fix unnamed enums from DbgHelp.h
@@ -251,9 +254,6 @@ static void MyStrCpy(char* szDest, size_t nMaxDestSize, const char* szSrc) STKWL
   // but with older compilers (<1400) it uses "strncpy" and this does not!)
   szDest[nMaxDestSize - 1] = 0;
 } // MyStrCpy
-
-// Normally it should be enough to use 'CONTEXT_FULL' (better would be 'CONTEXT_ALL')
-#define USED_CONTEXT_FLAGS CONTEXT_FULL
 
 static LPVOID GetProcAddrEx(int & counter, HMODULE hLib, LPCSTR name, LPVOID * ptr = NULL) STKWLK_NOEXCEPT
 {
@@ -1154,13 +1154,13 @@ BOOL StackWalker::ShowCallstack(HANDLE                    hThread,
       if (m_sw->m_ctx.ContextFlags != 0)
         c = m_sw->m_ctx;   // context taken at Init
       else
-        GET_CURRENT_CONTEXT_STACKWALKER_CODEPLEX(c, USED_CONTEXT_FLAGS);
+        GET_CURRENT_CONTEXT_STACKWALKER_CODEPLEX(c, STKWLK_CONTEXT_FLAGS);
     }
     else
     {
       SuspendThread(hThread);
       memset(&c, 0, sizeof(CONTEXT));
-      c.ContextFlags = USED_CONTEXT_FLAGS;
+      c.ContextFlags = STKWLK_CONTEXT_FLAGS;
 
       // TODO: Detect if you want to get a thread context of a different process, which is running a different processor architecture...
       // This does only work if we are x64 and the target process is x64 or x86;
