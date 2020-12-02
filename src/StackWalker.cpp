@@ -121,6 +121,10 @@
 #undef SymLoadModule
 #endif
 
+#ifdef SymFromAddr
+#undef SymFromAddr
+#endif
+
 #ifndef _countof
 #define _countof(_Array) (sizeof(_Array) / sizeof(_Array[0]))
 #endif
@@ -347,6 +351,7 @@ public:
     GetProcAddrEx(fcnt, m_hDbhHelp, "SymGetLineFromAddr64", (LPVOID*)&Sym.GetLineFromAddr);
     GetProcAddrEx(fcnt, m_hDbhHelp, "SymGetSearchPath", (LPVOID*)&Sym.GetSearchPath);
     GetProcAddrEx(fcnt, m_hDbhHelp, "SymLoadModuleEx", (LPVOID*)&Sym.LoadModuleEx);
+    GetProcAddrEx(fcnt, m_hDbhHelp, "SymFromAddr", (LPVOID*)&Sym.FromAddr);
 
     m_SymInitialized = Sym.Initialize(m_hProcess, szSymPath, FALSE);
     if (m_SymInitialized == FALSE)
@@ -447,9 +452,14 @@ public:
     DWORD (WINAPI * GetOptions)(VOID);
 
     BOOL (WINAPI * GetSymFromAddr)(IN HANDLE hProcess,
-                                   IN DWORD64 dwAddr,
+                                   IN DWORD64 Address,
                                    OUT PDWORD64 pdwDisplacement,
                                    OUT PIMAGEHLP_SYMBOL64 Symbol);
+
+    BOOL (WINAPI * FromAddr)(IN HANDLE hProcess,
+                             IN DWORD64 Address,
+                             OUT PDWORD64 pdwDisplacement,
+                             OUT PSYMBOL_INFO Symbol);
 
     BOOL (WINAPI * Initialize)(IN HANDLE hProcess, IN LPCSTR UserSearchPath, IN BOOL fInvadeProcess);
 
@@ -498,6 +508,33 @@ public:
       return Sym.LoadModule(hProcess, hFile, ImageName, ModuleName, BaseOfDll, SizeOfDll);
     SetLastError(ERROR_FUNCTION_NOT_CALLED);
     return 0;
+  }
+
+  // return pointer to Symbol.Name
+  LPCSTR SymFromAddr(HANDLE hProcess, DWORD64 Address, PDWORD64 pdwDisplacement, LPVOID sym)
+  {
+    const DWORD maxlen = StackWalker::STACKWALK_MAX_NAMELEN;
+    if (Sym.FromAddr != NULL)
+    {
+      memset(sym, 0, sizeof(SYMBOL_INFO));
+      PSYMBOL_INFO syminf = (PSYMBOL_INFO)sym;
+      syminf->SizeOfStruct = sizeof(SYMBOL_INFO);
+      syminf->MaxNameLen = maxlen;
+      BOOL rc = Sym.FromAddr(hProcess, Address, pdwDisplacement, syminf);
+      syminf->Name[(rc == FALSE) ? 0 : syminf->NameLen] = 0;
+      return (rc == FALSE) ? NULL : syminf->Name;
+    }
+    if (Sym.GetSymFromAddr != NULL)
+    {
+      PIMAGEHLP_SYMBOL64 imgsym = (PIMAGEHLP_SYMBOL64)sym;
+      memset(sym, 0, sizeof(IMAGEHLP_SYMBOL64) + (maxlen + 2) * sizeof(imgsym->Name[0]));
+      imgsym->SizeOfStruct = sizeof(IMAGEHLP_SYMBOL64);
+      imgsym->MaxNameLength = maxlen;
+      BOOL rc = Sym.GetSymFromAddr(hProcess, Address, pdwDisplacement, imgsym);
+      return (rc == FALSE) ? NULL : imgsym->Name;
+    }
+    SetLastError(ERROR_FUNCTION_NOT_CALLED);
+    return FALSE;
   }
 
 private:
@@ -1059,7 +1096,7 @@ BOOL StackWalker::ShowCallstack(HANDLE                    hThread,
 {
   CONTEXT                                   c;
   CallstackEntry                            csEntry;
-  IMAGEHLP_SYMBOL64*                        pSym = NULL;
+  LPVOID                                    pSym = NULL;
   StackWalkerInternal::IMAGEHLP_MODULE64_V3 Module;
   IMAGEHLP_LINE64                           Line;
   int                                       frameNum;
@@ -1149,12 +1186,10 @@ BOOL StackWalker::ShowCallstack(HANDLE                    hThread,
 #error "Platform not supported!"
 #endif
 
-  pSym = (IMAGEHLP_SYMBOL64*)malloc(sizeof(IMAGEHLP_SYMBOL64) + STACKWALK_MAX_NAMELEN);
+  const size_t nSymSize = sizeof(PSYMBOL_INFO) + STACKWALK_MAX_NAMELEN + 16;
+  pSym = malloc(nSymSize);
   if (!pSym)
     goto cleanup; // not enough memory...
-  memset(pSym, 0, sizeof(IMAGEHLP_SYMBOL64) + STACKWALK_MAX_NAMELEN);
-  pSym->SizeOfStruct = sizeof(IMAGEHLP_SYMBOL64);
-  pSym->MaxNameLength = STACKWALK_MAX_NAMELEN;
 
   memset(&Line, 0, sizeof(Line));
   Line.SizeOfStruct = sizeof(Line);
@@ -1203,16 +1238,16 @@ BOOL StackWalker::ShowCallstack(HANDLE                    hThread,
     {
       // we seem to have a valid PC
       // show procedure info (SymGetSymFromAddr64())
-      BOOL rc = m_sw->Sym.GetSymFromAddr(m_hProcess, s.AddrPC.Offset, &(csEntry.offsetFromSmybol), pSym);
-      if (rc != FALSE)
+      LPCSTR sname = m_sw->SymFromAddr(m_hProcess, s.AddrPC.Offset, &csEntry.offsetFromSmybol, pSym);
+      if (sname != NULL)
       {
-        MyStrCpy(csEntry.name, STACKWALK_MAX_NAMELEN, pSym->Name);
-        m_sw->Sym.UnDecorateName(pSym->Name, csEntry.undName, STACKWALK_MAX_NAMELEN, UNDNAME_NAME_ONLY);
-        m_sw->Sym.UnDecorateName(pSym->Name, csEntry.undFullName, STACKWALK_MAX_NAMELEN, UNDNAME_COMPLETE);
+        MyStrCpy(csEntry.name, STACKWALK_MAX_NAMELEN, sname);
+        m_sw->Sym.UnDecorateName(sname, csEntry.undName, STACKWALK_MAX_NAMELEN, UNDNAME_NAME_ONLY);
+        m_sw->Sym.UnDecorateName(sname, csEntry.undFullName, STACKWALK_MAX_NAMELEN, UNDNAME_COMPLETE);
       }
       else
       {
-        this->OnDbgHelpErr("SymGetSymFromAddr64", GetLastError(), s.AddrPC.Offset);
+        this->OnDbgHelpErr("SymGetSymFromAddr", GetLastError(), s.AddrPC.Offset);
       }
 
       // show line number info, NT5.0-method (SymGetLineFromAddr64())
@@ -1321,27 +1356,25 @@ BOOL StackWalker::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
     return FALSE;
   }
 
-  // SymGetSymFromAddr64() is required
-  if (m_sw->Sym.GetSymFromAddr == NULL)
+  // SymGetSymFromAddr64 or SymFromAddr is required
+  if (m_sw->Sym.GetSymFromAddr == NULL && m_sw->Sym.FromAddr == NULL)
     return FALSE;
 
   // Show object info (SymGetSymFromAddr64())
-  DWORD64            dwAddress = DWORD64(pObject);
-  DWORD64            dwDisplacement = 0;
-  const SIZE_T       symSize = sizeof(IMAGEHLP_SYMBOL64) + STACKWALK_MAX_NAMELEN;
-  IMAGEHLP_SYMBOL64* pSym = (IMAGEHLP_SYMBOL64*) malloc(symSize);
+  DWORD64      dwAddress = (DWORD64)pObject;
+  DWORD64      dwDisplacement = 0;
+  const SIZE_T symSize = sizeof(SYMBOL_INFO) + STACKWALK_MAX_NAMELEN + 16;
+  LPVOID pSym = malloc(symSize);
   if (!pSym)
     return FALSE;
-  memset(pSym, 0, symSize);
-  pSym->SizeOfStruct = sizeof(IMAGEHLP_SYMBOL64);
-  pSym->MaxNameLength = STACKWALK_MAX_NAMELEN;
-  if (m_sw->Sym.GetSymFromAddr(m_hProcess, dwAddress, &dwDisplacement, pSym) == FALSE)
+  LPCSTR sname = m_sw->SymFromAddr(m_hProcess, dwAddress, &dwDisplacement, pSym);
+  if (sname == NULL)
   {
-    this->OnDbgHelpErr("SymGetSymFromAddr64", GetLastError(), dwAddress);
+    this->OnDbgHelpErr("SymGetSymFromAddr", GetLastError(), dwAddress);
     return FALSE;
   }
   // Object name output
-  this->OnOutput(pSym->Name);
+  this->OnOutput(sname);
 
   free(pSym);
   return TRUE;
