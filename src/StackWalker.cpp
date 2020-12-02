@@ -581,7 +581,7 @@ private:
   BOOL GetModuleListTH32(HANDLE hProcess, DWORD pid) STKWLK_NOEXCEPT
   {
     // try both dlls...
-    const WCHAR* dllname[] = { L"kernel32.dll", L"tlhelp32.dll" };
+    LPCWSTR      dllname[] = { L"kernel32.dll", L"tlhelp32.dll" };
     HINSTANCE    hToolhelp = NULL;
     HANDLE (WINAPI * CreateTH32Snapshot)(DWORD dwFlags, DWORD th32ProcessID);
     BOOL (WINAPI * Module32First)(HANDLE hSnapshot, LPMODULEENTRY32 lpme);
@@ -590,7 +590,7 @@ private:
     MODULEENTRY32 me;
     me.dwSize = sizeof(me);
 
-    for (size_t i = 0; i < (sizeof(dllname) / sizeof(dllname[0])); i++)
+    for (size_t i = 0; i < _countof(dllname); i++)
     {
       hToolhelp = LoadLibraryW(dllname[i]);
       if (hToolhelp == NULL)
@@ -604,7 +604,7 @@ private:
       GetProcAddrEx(fcnt, hToolhelp, "Module32First", (LPVOID*)&Module32First);
       GetProcAddrEx(fcnt, hToolhelp, "Module32Next", (LPVOID*)&Module32Next);
 #endif
-      if (fcnt < 3)
+      if (fcnt == 3)
         break; // found the functions!
       FreeLibrary(hToolhelp);
       hToolhelp = NULL;
