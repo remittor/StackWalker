@@ -33,9 +33,9 @@ void (*pGlobalFuncPtr)() = 0;
 class StackWalkerToConsole : public StackWalker
 {
 protected:
-  virtual void OnOutput(LPCSTR szText) STKWLK_NOEXCEPT
+  virtual void OnOutput(LPCTSTR szText) STKWLK_NOEXCEPT
   {
-    printf("%s", szText);
+    _tprintf(_T("%s"), szText);
   }
 };
 

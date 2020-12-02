@@ -42,6 +42,7 @@
 #pragma once
 
 #include <windows.h>
+#include <tchar.h>
 
 // special defines for VC5/6 (if no actual PSDK is installed):
 #if _MSC_VER < 1300
@@ -110,16 +111,16 @@ public:
 
   StackWalker(ExceptType extype, int options = OptionsAll, PEXCEPTION_POINTERS exp = NULL) STKWLK_NOEXCEPT;
 
-  StackWalker(int    options = OptionsAll, // 'int' is by design, to combine the enum-flags
-              LPCSTR szSymPath = NULL,
-              DWORD  dwProcessId = GetCurrentProcessId(),
-              HANDLE hProcess = GetCurrentProcess()) STKWLK_NOEXCEPT;
+  StackWalker(int     options = OptionsAll, // 'int' is by design, to combine the enum-flags
+              LPCTSTR szSymPath = NULL,
+              DWORD   dwProcessId = GetCurrentProcessId(),
+              HANDLE  hProcess = GetCurrentProcess()) STKWLK_NOEXCEPT;
 
   StackWalker(DWORD dwProcessId, HANDLE hProcess) STKWLK_NOEXCEPT;
 
   virtual ~StackWalker() STKWLK_NOEXCEPT;
 
-  bool SetSymPath(LPCSTR szSymPath) STKWLK_NOEXCEPT;
+  bool SetSymPath(LPCTSTR szSymPath) STKWLK_NOEXCEPT;
   
   bool SetDbgHelpPath(LPCWSTR szDllPath) STKWLK_NOEXCEPT;
 
@@ -128,7 +129,7 @@ public:
   PCONTEXT GetCurrentExceptionContext() STKWLK_NOEXCEPT;
 
 private:
-  bool Init(ExceptType extype, int options, LPCSTR szSymPath, DWORD dwProcessId,
+  bool Init(ExceptType extype, int options, LPCTSTR szSymPath, DWORD dwProcessId,
             HANDLE hProcess, PEXCEPTION_POINTERS exp = NULL) STKWLK_NOEXCEPT;
 
 public:
@@ -167,18 +168,18 @@ protected:
   typedef struct CallstackEntry
   {
     DWORD64 offset; // if 0, we have no valid entry
-    CHAR    name[STACKWALK_MAX_NAMELEN];
-    CHAR    undName[STACKWALK_MAX_NAMELEN];
-    CHAR    undFullName[STACKWALK_MAX_NAMELEN];
+    TCHAR   name[STACKWALK_MAX_NAMELEN];
+    TCHAR   undName[STACKWALK_MAX_NAMELEN];
+    TCHAR   undFullName[STACKWALK_MAX_NAMELEN];
     DWORD64 offsetFromSmybol;
     DWORD   offsetFromLine;
     DWORD   lineNumber;
-    CHAR    lineFileName[STACKWALK_MAX_NAMELEN];
+    TCHAR   lineFileName[STACKWALK_MAX_NAMELEN];
     DWORD   symType;
-    LPCSTR  symTypeString;
-    CHAR    moduleName[STACKWALK_MAX_NAMELEN];
+    LPCTSTR symTypeString;
+    TCHAR   moduleName[STACKWALK_MAX_NAMELEN];
     DWORD64 baseOfImage;
-    CHAR    loadedImageName[STACKWALK_MAX_NAMELEN];
+    TCHAR   loadedImageName[STACKWALK_MAX_NAMELEN];
   } CallstackEntry;
 
   typedef enum CallstackEntryType
@@ -188,24 +189,24 @@ protected:
     lastEntry
   } CallstackEntryType;
 
-  virtual void OnSymInit(LPCSTR szSearchPath, DWORD symOptions, LPCSTR szUserName) STKWLK_NOEXCEPT;
-  virtual void OnLoadModule(LPCSTR    img,
-                            LPCSTR    mod,
+  virtual void OnSymInit(LPCTSTR szSearchPath, DWORD symOptions, LPCTSTR szUserName) STKWLK_NOEXCEPT;
+  virtual void OnLoadModule(LPCTSTR   img,
+                            LPCTSTR   mod,
                             DWORD64   baseAddr,
                             DWORD     size,
                             DWORD     result,
-                            LPCSTR    symType,
-                            LPCSTR    pdbName,
+                            LPCTSTR   symType,
+                            LPCTSTR   pdbName,
                             ULONGLONG fileVersion) STKWLK_NOEXCEPT;
   virtual void OnCallstackEntry(CallstackEntryType eType, CallstackEntry& entry) STKWLK_NOEXCEPT;
-  virtual void OnDbgHelpErr(LPCSTR szFuncName, DWORD gle, DWORD64 addr) STKWLK_NOEXCEPT;
-  virtual void OnOutput(LPCSTR szText) STKWLK_NOEXCEPT;
+  virtual void OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) STKWLK_NOEXCEPT;
+  virtual void OnOutput(LPCTSTR szText) STKWLK_NOEXCEPT;
 
   StackWalkerInternal* m_sw;
   HANDLE               m_hProcess;
   DWORD                m_dwProcessId;
   BOOL                 m_modulesLoaded;
-  LPSTR                m_szSymPath;
+  LPTSTR               m_szSymPath;
   LPCWSTR              m_szDbgHelpPath;
 
   int m_options;
