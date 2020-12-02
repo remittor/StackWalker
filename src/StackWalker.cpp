@@ -1400,6 +1400,7 @@ BOOL StackWalker::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
   if (sname == NULL)
   {
     this->OnDbgHelpErr(_T("SymGetSymFromAddr"), GetLastError(), dwAddress);
+    free(pSym);
     return FALSE;
   }
   // Object name output
