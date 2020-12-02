@@ -389,7 +389,7 @@ public:
   BOOL    m_SymInitialized;
 
 #pragma pack(push, 8)
-  typedef struct _IMAGEHLP_MODULE64_V3
+  struct IMAGEHLP_MODULE64_V2
   {
     DWORD    SizeOfStruct;         // set to sizeof(IMAGEHLP_MODULE64)
     DWORD64  BaseOfImage;          // base load address of module
@@ -401,36 +401,28 @@ public:
     CHAR     ModuleName[32];       // module name
     CHAR     ImageName[256];       // image name
     CHAR     LoadedImageName[256]; // symbol file name
-    // new elements: 07-Jun-2002
-    CHAR  LoadedPdbName[256];   // pdb file name
-    DWORD CVSig;                // Signature of the CV record in the debug directories
-    CHAR  CVData[MAX_PATH * 3]; // Contents of the CV record
-    DWORD PdbSig;               // Signature of PDB
-    GUID  PdbSig70;             // Signature of PDB (VC 7 and up)
-    DWORD PdbAge;               // DBI age of pdb
-    BOOL  PdbUnmatched;         // loaded an unmatched pdb
-    BOOL  DbgUnmatched;         // loaded an unmatched dbg
-    BOOL  LineNumbers;          // we have line number information
-    BOOL  GlobalSymbols;        // we have internal symbol information
-    BOOL  TypeInfo;             // we have type information
-    // new elements: 17-Dec-2003
-    BOOL SourceIndexed; // pdb supports source server
-    BOOL Publics;       // contains public symbols
-  } IMAGEHLP_MODULE64_V3, *PIMAGEHLP_MODULE64_V3;
+  };
+  typedef IMAGEHLP_MODULE64_V2  *PIMAGEHLP_MODULE64_V2;
 
-  typedef struct _IMAGEHLP_MODULE64_V2
+  // since 07-Jun-2002
+  struct IMAGEHLP_MODULE64_V3 : IMAGEHLP_MODULE64_V2 
   {
-    DWORD    SizeOfStruct;         // set to sizeof(IMAGEHLP_MODULE64)
-    DWORD64  BaseOfImage;          // base load address of module
-    DWORD    ImageSize;            // virtual size of the loaded module
-    DWORD    TimeDateStamp;        // date/time stamp from pe header
-    DWORD    CheckSum;             // checksum from the pe header
-    DWORD    NumSyms;              // number of symbols in the symbol table
-    SYM_TYPE SymType;              // type of symbols loaded
-    CHAR     ModuleName[32];       // module name
-    CHAR     ImageName[256];       // image name
-    CHAR     LoadedImageName[256]; // symbol file name
-  } IMAGEHLP_MODULE64_V2, *PIMAGEHLP_MODULE64_V2;
+    CHAR     LoadedPdbName[256];   // pdb file name
+    DWORD    CVSig;                // Signature of the CV record in the debug directories
+    CHAR     CVData[MAX_PATH * 3]; // Contents of the CV record
+    DWORD    PdbSig;               // Signature of PDB
+    GUID     PdbSig70;             // Signature of PDB (VC 7 and up)
+    DWORD    PdbAge;               // DBI age of pdb
+    BOOL     PdbUnmatched;         // loaded an unmatched pdb
+    BOOL     DbgUnmatched;         // loaded an unmatched dbg
+    BOOL     LineNumbers;          // we have line number information
+    BOOL     GlobalSymbols;        // we have internal symbol information
+    BOOL     TypeInfo;             // we have type information
+    // new elements: 17-Dec-2003
+    BOOL     SourceIndexed;        // pdb supports source server
+    BOOL     Publics;              // contains public symbols
+  };
+  typedef IMAGEHLP_MODULE64_V3  *PIMAGEHLP_MODULE64_V3;
 #pragma pack(pop)
 
   struct {
