@@ -232,6 +232,18 @@ typedef DWORD64(__stdcall* PTRANSLATE_ADDRESS_ROUTINE64)(HANDLE      hProcess,
 #endif // _MSC_VER < 1300
 #pragma pack(pop)
 
+#ifdef StackWalk
+#undef StackWalk
+#endif
+
+#ifdef SearchPath
+#undef SearchPath
+#endif
+
+#ifdef SymLoadModule
+#undef SymLoadModule
+#endif
+
 // Some missing defines (for VC5/6):
 #ifndef INVALID_FILE_ATTRIBUTES
 #define INVALID_FILE_ATTRIBUTES ((DWORD)-1)
@@ -458,6 +470,7 @@ public:
     fcnt = 0;
     GetProcAddrEx(fcnt, m_hDbhHelp, "SymGetLineFromAddr64", (LPVOID*)&Sym.GetLineFromAddr);
     GetProcAddrEx(fcnt, m_hDbhHelp, "SymGetSearchPath", (LPVOID*)&Sym.GetSearchPath);
+    GetProcAddrEx(fcnt, m_hDbhHelp, "SymLoadModuleEx", (LPVOID*)&Sym.LoadModuleEx);
 
     m_SymInitialized = Sym.Initialize(m_hProcess, szSymPath, FALSE);
     if (m_SymInitialized == FALSE)
@@ -571,6 +584,15 @@ public:
                                   IN DWORD64 BaseOfDll,
                                   IN DWORD SizeOfDll);
 
+    DWORD64 (WINAPI * LoadModuleEx)(IN HANDLE hProcess,
+                                    IN HANDLE hFile,
+                                    IN LPCSTR ImageName,
+                                    IN LPCSTR ModuleName,
+                                    IN DWORD64 BaseOfDll,
+                                    IN DWORD DllSize,
+                                    IN PMODLOAD_DATA Data,
+                                    IN DWORD Flags);
+
     DWORD (WINAPI * SetOptions)(IN DWORD SymOptions);
 
     BOOL (WINAPI * StackWalk)( DWORD                            MachineType,
@@ -590,6 +612,17 @@ public:
 
     BOOL (WINAPI * GetSearchPath)(HANDLE hProcess, PSTR SearchPath, DWORD SearchPathLength);
   } Sym;
+
+  DWORD64 SymLoadModule(HANDLE hProcess, HANDLE hFile, LPCSTR ImageName, LPCSTR ModuleName,
+                        DWORD64 BaseOfDll, DWORD SizeOfDll)
+  {
+    if (Sym.LoadModuleEx != NULL)
+      return Sym.LoadModuleEx(hProcess, hFile, ImageName, ModuleName, BaseOfDll, SizeOfDll, NULL, 0);
+    if (Sym.LoadModule != NULL)
+      return Sym.LoadModule(hProcess, hFile, ImageName, ModuleName, BaseOfDll, SizeOfDll);
+    SetLastError(ERROR_FUNCTION_NOT_CALLED);
+    return 0;
+  }
 
 private:
 // **************************************** ToolHelp32 ************************
@@ -765,7 +798,7 @@ private:
       result = ERROR_NOT_ENOUGH_MEMORY;
     else
     {
-      if (Sym.LoadModule(hProcess, 0, szImg, szMod, baseAddr, size) == 0)
+      if (SymLoadModule(hProcess, 0, szImg, szMod, baseAddr, size) == 0)
         result = GetLastError();
     }
     ULONGLONG fileVersion = 0;
