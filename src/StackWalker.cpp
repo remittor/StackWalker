@@ -267,12 +267,20 @@ public:
 
   ~StackWalkerInternal() STKWLK_NOEXCEPT
   {
-    if (Sym.Cleanup != NULL && m_SymInitialized != FALSE)
-      Sym.Cleanup(m_hProcess);
-    if (m_hDbhHelp != NULL)
-      FreeLibrary(m_hDbhHelp);
-    m_hDbhHelp = NULL;
+    UnloadDbgHelpLib();
     m_parent = NULL;
+  }
+
+  void UnloadDbgHelpLib() STKWLK_NOEXCEPT
+  {
+    if (m_hDbhHelp != NULL && m_SymInitialized != FALSE && Sym.Cleanup != NULL)
+      Sym.Cleanup(m_hProcess);
+    memset(&Sym, 0, sizeof(Sym));
+    m_SymInitialized = FALSE;
+    if (m_hDbhHelp == NULL)
+      return;
+    FreeLibrary(m_hDbhHelp);
+    m_hDbhHelp = NULL;
   }
 
   BOOL Init(LPCTSTR szSymPath) STKWLK_NOEXCEPT
@@ -362,9 +370,7 @@ public:
 
     if (fcnt < 11)
     {
-      FreeLibrary(m_hDbhHelp);
-      m_hDbhHelp = NULL;
-      Sym.Cleanup = NULL;
+      UnloadDbgHelpLib();
       return FALSE;
     }
     fcnt = 0;
@@ -382,7 +388,7 @@ public:
     if (m_SymInitialized == FALSE)
     {
       this->m_parent->OnDbgHelpErr(_T("SymInitialize"), GetLastError(), 0);
-      FreeLibrary(m_hDbhHelp);
+      UnloadDbgHelpLib();
       return FALSE;
     }
 
