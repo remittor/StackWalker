@@ -62,6 +62,12 @@ typedef unsigned long SIZE_T, *PSIZE_T;
 #endif
 #endif // STKWLK_NOEXCEPT
 
+#if _MSC_VER < 1700
+#define STKWLK_FINAL sealed
+#else
+#define STKWLK_FINAL final
+#endif 
+
 
 class StackWalkerInternal; // forward
 
@@ -219,6 +225,23 @@ protected:
                                       LPDWORD lpNumberOfBytesRead) STKWLK_NOEXCEPT;
 
   friend StackWalkerInternal;
+
+private:
+// It is necessary to block the using of virtual methods with invalid types of string arguments!
+#define STKWLK_PROTECT_VM  STKWLK_NOEXCEPT STKWLK_FINAL { }
+#ifdef _UNICODE
+#define LPCTSTR  LPCSTR
+#define LPTSTR   LPSTR
+#else
+#define LPCTSTR  LPCWSTR
+#define LPTSTR   LPWSTR
+#endif
+  virtual void OnSymInit(LPCTSTR, DWORD, LPCTSTR) STKWLK_PROTECT_VM;
+  virtual void OnLoadModule(LPCTSTR, LPCTSTR, DWORD64, DWORD, DWORD, LPCTSTR, LPCTSTR, ULONGLONG) STKWLK_PROTECT_VM;
+  virtual void OnDbgHelpErr(LPCTSTR, DWORD, DWORD64) STKWLK_PROTECT_VM;
+  virtual void OnOutput(LPCTSTR) STKWLK_PROTECT_VM;
+#undef  LPCTSTR
+#undef  LPTSTR
 }; // class StackWalker
 
 // The "ugly" assembler-implementation is needed for systems before XP
