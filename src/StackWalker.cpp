@@ -198,7 +198,7 @@ static LPVOID GetProcAddrEx(int & counter, HMODULE hLib, LPCSTR name, LPVOID * p
   return proc;
 }
 
-static errno_t MyPathCat(LPWSTR path, size_t capacity, LPCWSTR addon, bool isDir)
+static errno_t MyPathCat(LPWSTR path, size_t capacity, LPCWSTR addon, bool isDir) STKWLK_NOEXCEPT
 {
   errno_t rc = MyStrCat(path, capacity, addon);
   if (rc)
@@ -214,7 +214,7 @@ static errno_t MyPathCat(LPWSTR path, size_t capacity, LPCWSTR addon, bool isDir
   return 0;
 }
 
-static HMODULE LoadDbgHelpLib(bool prefixIsDir, LPCWSTR prefix, LPCWSTR path)
+static HMODULE LoadDbgHelpLib(bool prefixIsDir, LPCWSTR prefix, LPCWSTR path) STKWLK_NOEXCEPT
 {
   WCHAR buf[2048];
   wcscpy_s(buf, L"\\\\?\\");   // for long path support
@@ -517,7 +517,7 @@ public:
   } Sym;
 
   DWORD64 SymLoadModule(HANDLE hProcess, HANDLE hFile, LPCTSTR ImageName, LPCTSTR ModuleName,
-                        DWORD64 BaseOfDll, DWORD SizeOfDll)
+                        DWORD64 BaseOfDll, DWORD SizeOfDll) STKWLK_NOEXCEPT
   {
     if (Sym.LoadModuleEx != NULL)
       return Sym.LoadModuleEx(hProcess, hFile, ImageName, ModuleName, BaseOfDll, SizeOfDll, NULL, 0);
@@ -528,7 +528,7 @@ public:
   }
 
   // return pointer to Symbol.Name
-  LPCTSTR SymFromAddr(HANDLE hProcess, DWORD64 Address, PDWORD64 pdwDisplacement, LPVOID sym)
+  LPCTSTR SymFromAddr(HANDLE hProcess, DWORD64 Address, PDWORD64 pdwDisplacement, LPVOID sym) STKWLK_NOEXCEPT
   {
     const DWORD maxlen = StackWalker::STACKWALK_MAX_NAMELEN;
     if (Sym.FromAddr != NULL)
