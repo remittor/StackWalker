@@ -60,7 +60,15 @@ typedef unsigned long SIZE_T, *PSIZE_T;
 #else
 #define STKWLK_NOEXCEPT noexcept
 #endif
-#endif // STKWLK_NOEXCEPT
+#endif // STKWLK_THROWABLE
+
+#if _MSC_VER >= 1800
+#define STKWLK_DEFAULT  =default
+#define STKWLK_DELETED  =delete
+#else
+#define STKWLK_DEFAULT 
+#define STKWLK_DELETED 
+#endif
 
 #if _MSC_VER < 1700
 #define STKWLK_FINAL sealed
@@ -123,6 +131,15 @@ public:
               HANDLE  hProcess = GetCurrentProcess()) STKWLK_NOEXCEPT;
 
   StackWalker(DWORD dwProcessId, HANDLE hProcess) STKWLK_NOEXCEPT;
+
+  // delete copy constructor
+  StackWalker(const StackWalker & ) STKWLK_DELETED;
+  const StackWalker & operator = ( const StackWalker & ) STKWLK_DELETED;
+#if _MSC_VER >= 1800
+  // delete move constructor
+  StackWalker(StackWalker &&) STKWLK_DELETED;
+  StackWalker & operator = ( StackWalker && ) STKWLK_DELETED;
+#endif
 
   virtual ~StackWalker() STKWLK_NOEXCEPT;
 
