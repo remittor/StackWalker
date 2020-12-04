@@ -1061,7 +1061,7 @@ BOOL StackWalker::LoadModules() STKWLK_NOEXCEPT
   if ((this->m_options & SymBuildPath) != 0)
   {
     const size_t nSymPathLen = 4096;
-    szSymPath = (LPTSTR) malloc(nSymPathLen);
+    szSymPath = (LPTSTR) malloc((nSymPathLen + 8) * sizeof(TCHAR));
     if (szSymPath == NULL)
     {
       SetLastError(ERROR_NOT_ENOUGH_MEMORY);
