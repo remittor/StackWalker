@@ -739,41 +739,40 @@ private:
 
   DWORD LoadModule(HANDLE hProcess, LPCTSTR img, LPCTSTR mod, DWORD64 baseAddr, DWORD size) STKWLK_NOEXCEPT
   {
-    LPTSTR szImg = _tcsdup(img);
-    LPTSTR szMod = _tcsdup(mod);
     DWORD result = ERROR_SUCCESS;
-    if ((szImg == NULL) || (szMod == NULL))
-      result = ERROR_NOT_ENOUGH_MEMORY;
-    else
-    {
-      if (SymLoadModule(hProcess, 0, szImg, szMod, baseAddr, size) == 0)
-        result = GetLastError();
-    }
     ULONGLONG fileVersion = 0;
-    if ((m_parent != NULL) && (szImg != NULL))
+
+    if (img == NULL)
+      return ERROR_BAD_ARGUMENTS;
+
+    if (this->m_parent == NULL)
+      return ERROR_DS_NO_PARENT_OBJECT;
+
+    if (SymLoadModule(hProcess, NULL, img, mod, baseAddr, size) == 0)
+    {
+      result = GetLastError();
+      if (result == ERROR_SUCCESS)
+        result = ERROR_DS_SCHEMA_NOT_LOADED;
+    }
     {
       // try to retrieve the file-version:
       if ((this->m_parent->m_options & StackWalker::RetrieveFileVersion) != 0)
       {
         VS_FIXEDFILEINFO* fInfo = NULL;
         DWORD             dwHandle;
-        DWORD             dwSize = GetFileVersionInfoSize(szImg, &dwHandle);
+        DWORD             dwSize = GetFileVersionInfoSize(img, &dwHandle);
         if (dwSize > 0)
         {
           LPVOID vData = malloc(dwSize);
           if (vData != NULL)
           {
-            if (GetFileVersionInfo(szImg, dwHandle, dwSize, vData) != 0)
+            if (GetFileVersionInfo(img, dwHandle, dwSize, vData) != 0)
             {
               UINT  len;
               TCHAR szSubBlock[] = _T("\\");
-              if (VerQueryValue(vData, szSubBlock, (LPVOID*)&fInfo, &len) == 0)
-                fInfo = NULL;
-              else
-              {
+              if (VerQueryValue(vData, szSubBlock, (LPVOID*)&fInfo, &len) != FALSE)
                 fileVersion =
                     ((ULONGLONG)fInfo->dwFileVersionLS) + ((ULONGLONG)fInfo->dwFileVersionMS << 32);
-              }
             }
             free(vData);
           }
@@ -822,10 +821,6 @@ private:
       this->m_parent->OnLoadModule(img, mod, baseAddr, size, result, szSymType, pdbName,
                                    fileVersion);
     }
-    if (szImg != NULL)
-      free(szImg);
-    if (szMod != NULL)
-      free(szMod);
     return result;
   }
 
