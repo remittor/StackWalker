@@ -169,6 +169,8 @@ public:
 
   BOOL LoadModules() STKWLK_NOEXCEPT;
 
+  BOOL ShowCallstack(const CONTEXT * context) STKWLK_NOEXCEPT;
+
   BOOL ShowCallstack(
       HANDLE                    hThread = GetCurrentThread(),
       const CONTEXT*            context = NULL,

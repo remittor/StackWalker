@@ -1444,6 +1444,11 @@ BOOL StackWalker::ShowCallstack(HANDLE                    hThread,
   return TRUE;
 }
 
+BOOL StackWalker::ShowCallstack(const CONTEXT * context) STKWLK_NOEXCEPT
+{
+  return ShowCallstack(GetCurrentThread(), context, NULL, NULL);
+}
+
 BOOL StackWalker::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
 {
   if (this->m_sw == NULL)
