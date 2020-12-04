@@ -1211,6 +1211,11 @@ BOOL StackWalker::ShowCallstack(HANDLE                    hThread,
   bool                 bLastEntryCalled = true;
   int                  curRecursionCount = 0;
 
+  if (this->m_sw == NULL)
+  {
+    SetLastError(ERROR_OUTOFMEMORY);
+    return FALSE;
+  }
   if (m_modulesLoaded == FALSE)
     this->LoadModules(); // ignore the result...
 
@@ -1441,6 +1446,11 @@ BOOL StackWalker::ShowCallstack(HANDLE                    hThread,
 
 BOOL StackWalker::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
 {
+  if (this->m_sw == NULL)
+  {
+    SetLastError(ERROR_OUTOFMEMORY);
+    return FALSE;
+  }
   // Load modules if not done yet
   if (m_modulesLoaded == FALSE)
     this->LoadModules(); // ignore the result...
