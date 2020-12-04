@@ -454,6 +454,12 @@ public:
     BOOL     Publics;              // contains public symbols
   };
   typedef IMAGEHLP_MODULE64_V3  *PIMAGEHLP_MODULE64_V3;
+
+  // reserve enough memory, so the bug in v6.3.5.1 does not lead to memory-overwrites...
+  struct T_IMAGEHLP_MODULE64 : IMAGEHLP_MODULE64_V3
+  {
+    char _padding[4096 - sizeof(IMAGEHLP_MODULE64_V3)];
+  };
 #pragma pack(pop)
 
   struct {
@@ -470,7 +476,7 @@ public:
 
     BOOL (WINAPI * GetModuleInfo)(IN HANDLE hProcess,
                                   IN DWORD64 Address,
-                                  OUT IMAGEHLP_MODULE64_V3* ModuleInfo);
+                                  OUT T_IMAGEHLP_MODULE64 * ModuleInfo);
 
     DWORD (WINAPI * GetOptions)(VOID);
 
@@ -780,9 +786,9 @@ private:
       }
 
       // Retrieve some additional-infos about the module
-      IMAGEHLP_MODULE64_V3 Module;
+      T_IMAGEHLP_MODULE64 Module;
       LPCTSTR szSymType = _T("-unknown-");
-      if (this->GetModuleInfo(hProcess, baseAddr, &Module) != FALSE)
+      if (this->GetModuleInfo(hProcess, baseAddr, Module) != FALSE)
       {
         switch (Module.SymType)
         {
@@ -834,50 +840,35 @@ public:
     return GetModuleListPSAPI(hProcess);
   }
 
-  BOOL GetModuleInfo(HANDLE hProcess, DWORD64 baseAddr, IMAGEHLP_MODULE64_V3* pModuleInfo) STKWLK_NOEXCEPT
+  BOOL GetModuleInfo(HANDLE hProcess, DWORD64 baseAddr, T_IMAGEHLP_MODULE64 & modInfo) STKWLK_NOEXCEPT
   {
-    memset(pModuleInfo, 0, sizeof(IMAGEHLP_MODULE64_V3));
+    memset(&modInfo, 0, sizeof(modInfo));
     if (Sym.GetModuleInfo == NULL)
     {
       SetLastError(ERROR_DLL_INIT_FAILED);
       return FALSE;
     }
     // First try to use the larger ModuleInfo-Structure
-    pModuleInfo->SizeOfStruct = sizeof(IMAGEHLP_MODULE64_V3);
-    void* pData = malloc(
-        4096); // reserve enough memory, so the bug in v6.3.5.1 does not lead to memory-overwrites...
-    if (pData == NULL)
-    {
-      SetLastError(ERROR_NOT_ENOUGH_MEMORY);
-      return FALSE;
-    }
-    memcpy(pData, pModuleInfo, sizeof(IMAGEHLP_MODULE64_V3));
+    modInfo.SizeOfStruct = sizeof(IMAGEHLP_MODULE64_V3);
     static bool s_useV3Version = true;
     if (s_useV3Version)
     {
-      if (Sym.GetModuleInfo(hProcess, baseAddr, (IMAGEHLP_MODULE64_V3*)pData) != FALSE)
+      if (Sym.GetModuleInfo(hProcess, baseAddr, &modInfo) != FALSE)
       {
-        // only copy as much memory as is reserved...
-        memcpy(pModuleInfo, pData, sizeof(IMAGEHLP_MODULE64_V3));
-        pModuleInfo->SizeOfStruct = sizeof(IMAGEHLP_MODULE64_V3);
-        free(pData);
+        modInfo.SizeOfStruct = sizeof(IMAGEHLP_MODULE64_V3);
         return TRUE;
       }
       s_useV3Version = false; // to prevent unnecessary calls with the larger struct...
+      memset(&modInfo, 0, sizeof(modInfo));
     }
 
     // could not retrieve the bigger structure, try with the smaller one (as defined in VC7.1)...
-    pModuleInfo->SizeOfStruct = sizeof(IMAGEHLP_MODULE64_V2);
-    memcpy(pData, pModuleInfo, sizeof(IMAGEHLP_MODULE64_V2));
-    if (Sym.GetModuleInfo(hProcess, baseAddr, (IMAGEHLP_MODULE64_V3*)pData) != FALSE)
+    modInfo.SizeOfStruct = sizeof(IMAGEHLP_MODULE64_V2);
+    if (Sym.GetModuleInfo(hProcess, baseAddr, &modInfo) != FALSE)
     {
-      // only copy as much memory as is reserved...
-      memcpy(pModuleInfo, pData, sizeof(IMAGEHLP_MODULE64_V2));
-      pModuleInfo->SizeOfStruct = sizeof(IMAGEHLP_MODULE64_V2);
-      free(pData);
+      modInfo.SizeOfStruct = sizeof(IMAGEHLP_MODULE64_V2);
       return TRUE;
     }
-    free(pData);
     SetLastError(ERROR_DLL_INIT_FAILED);
     return FALSE;
   }
@@ -1127,7 +1118,7 @@ BOOL StackWalker::ShowCallstack(HANDLE                    hThread,
   CONTEXT                                   c;
   CallstackEntry                            csEntry;
   LPVOID                                    pSym = NULL;
-  StackWalkerInternal::IMAGEHLP_MODULE64_V3 Module;
+  StackWalkerInternal::T_IMAGEHLP_MODULE64  Module;
   T_IMAGEHLP_LINE64                         Line;
   int                                       frameNum;
   bool                                      bLastEntryCalled = true;
@@ -1224,9 +1215,6 @@ BOOL StackWalker::ShowCallstack(HANDLE                    hThread,
   memset(&Line, 0, sizeof(Line));
   Line.SizeOfStruct = sizeof(Line);
 
-  memset(&Module, 0, sizeof(Module));
-  Module.SizeOfStruct = sizeof(Module);
-
   for (frameNum = 0;; ++frameNum)
   {
     // get next stack frame (StackWalk64(), SymFunctionTableAccess64(), SymGetModuleBase64())
@@ -1296,7 +1284,7 @@ BOOL StackWalker::ShowCallstack(HANDLE                    hThread,
       } // yes, we have SymGetLineFromAddr64()
 
       // show module info (SymGetModuleInfo64())
-      if (this->m_sw->GetModuleInfo(this->m_hProcess, s.AddrPC.Offset, &Module) != FALSE)
+      if (this->m_sw->GetModuleInfo(this->m_hProcess, s.AddrPC.Offset, Module) != FALSE)
       { // got module info OK
         switch (Module.SymType)
         {
