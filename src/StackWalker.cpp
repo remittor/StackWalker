@@ -143,11 +143,54 @@
 
 // secure-CRT_functions are only available starting with VC8 (MSVC2005)
 #if _MSC_VER < 1400
-#define strcpy_s(dst, len, src) strcpy(dst, src)
-#define strncpy_s(dst, len, src, maxLen) strncpy(dst, len, src)
-#define strcat_s(dst, len, src) strcat(dst, src)
-#define strncat_s(dst, len, src, maxLen) strncat(dst, len, src)
-#define _snprintf_s _snprintf
+#ifdef _TRUNCATE
+#undef _TRUNCATE
+#endif
+#define _TRUNCATE  ((SIZE_T)-1)
+#define errno_t  int
+static errno_t strncpy_s(char * dst, size_t dstcap, const char * src, size_t count)
+{
+  strncpy(dst, src, min(count, dstcap));
+  dst[dstcap-1] = 0;
+  return 0;
+}
+static errno_t strcpy_s(char * dst, size_t dstcap, const char * src)
+{
+  return strncpy_s(dst, dstcap, src, _TRUNCATE);
+}
+static errno_t strncat_s(char * dst, size_t dstcap, const char * src, size_t count)
+{
+  size_t dlen = strlen(dst);
+  if (dlen + 1 >= dstcap)
+    return 0;
+  return strncpy_s(dst + dlen, dstcap - dlen - 1, src, count);
+}
+static errno_t strcat_s(char * dst, size_t dstcap, const char * src)
+{
+  return strncat_s(dst, dstcap, src, _TRUNCATE);
+}
+static errno_t wcsncpy_s(WCHAR * dst, size_t dstcap, const WCHAR * src, size_t count)
+{
+  wcsncpy(dst, src, min(count, dstcap));
+  dst[dstcap-1] = 0;
+  return 0;
+}
+static errno_t wcscpy_s(WCHAR * dst, size_t dstcap, const WCHAR * src)
+{
+  return wcsncpy_s(dst, dstcap, src, _TRUNCATE);
+}
+static errno_t wcsncat_s(WCHAR * dst, size_t dstcap, const WCHAR * src, size_t count)
+{
+  size_t dlen = wcslen(dst);
+  if (dlen + 1 >= dstcap)
+    return 0;
+  return wcsncpy_s(dst + dlen, dstcap - dlen - 1, src, count);
+}
+static errno_t wcscat_s(WCHAR * dst, size_t dstcap, const WCHAR * src)
+{
+  return wcsncat_s(dst, dstcap, src, _TRUNCATE);
+}
+#define _snprintf_s  _snprintf
 #define _sntprintf_s _sntprintf
 #endif
 
@@ -217,7 +260,7 @@ static errno_t MyPathCat(LPWSTR path, size_t capacity, LPCWSTR addon, bool isDir
 static HMODULE LoadDbgHelpLib(bool prefixIsDir, LPCWSTR prefix, LPCWSTR path) STKWLK_NOEXCEPT
 {
   WCHAR buf[2048];
-  wcscpy_s(buf, L"\\\\?\\");   // for long path support
+  wcscpy_s(buf, _countof(buf), L"\\\\?\\");   // for long path support
   if (prefix)
   {
     errno_t rc = MyPathCat(buf, _countof(buf), prefix, prefixIsDir);

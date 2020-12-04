@@ -70,11 +70,13 @@ typedef unsigned long SIZE_T, *PSIZE_T;
 #define STKWLK_DELETED 
 #endif
 
-#if _MSC_VER < 1700
+#if _MSC_VER >= 1700
+#define STKWLK_FINAL final
+#elif _MSC_VER >= 1400
 #define STKWLK_FINAL sealed
 #else
-#define STKWLK_FINAL final
-#endif 
+#define STKWLK_FINAL
+#endif
 
 
 class StackWalkerInternal; // forward
