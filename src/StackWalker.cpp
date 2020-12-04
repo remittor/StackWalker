@@ -811,25 +811,7 @@ private:
       // try to retrieve the file-version:
       if ((this->m_parent->m_options & StackWalker::RetrieveFileVersion) != 0)
       {
-        VS_FIXEDFILEINFO* fInfo = NULL;
-        DWORD             dwHandle;
-        DWORD             dwSize = GetFileVersionInfoSize(img, &dwHandle);
-        if (dwSize > 0)
-        {
-          LPVOID vData = malloc(dwSize);
-          if (vData != NULL)
-          {
-            if (GetFileVersionInfo(img, dwHandle, dwSize, vData) != 0)
-            {
-              UINT  len;
-              TCHAR szSubBlock[] = _T("\\");
-              if (VerQueryValue(vData, szSubBlock, (LPVOID*)&fInfo, &len) != FALSE)
-                fileVersion =
-                    ((ULONGLONG)fInfo->dwFileVersionLS) + ((ULONGLONG)fInfo->dwFileVersionMS << 32);
-            }
-            free(vData);
-          }
-        }
+        GetFileVersion(img, fileVersion);
       }
 
       // Retrieve some additional-infos about the module
@@ -878,6 +860,40 @@ private:
   }
 
 public:
+  bool GetFileVersion(LPCTSTR filename, ULONGLONG & ver, VS_FIXEDFILEINFO * vinfo = NULL)
+  {
+    bool result = false;
+    BYTE buffer[2048];
+    LPVOID vData = (LPVOID)buffer;
+    VS_FIXEDFILEINFO * fInfo = NULL;
+    ver = 0;
+    DWORD dwHandle = 0;
+    DWORD dwSize = GetFileVersionInfoSize(filename, &dwHandle);
+    if (dwSize == 0 || dwSize > 256 * 1024)
+      return false;
+    if (dwSize >= sizeof(buffer))
+    {
+      vData = malloc(dwSize);
+      if (vData == NULL)
+        return false;
+    }
+    if (GetFileVersionInfo(filename, dwHandle, dwSize, vData) != 0)
+    {
+      UINT len = 0;
+      BOOL rc = VerQueryValue(vData, _T("\\"), (LPVOID*)&fInfo, &len);
+      if (rc != FALSE && fInfo != NULL && len > 0)
+      {
+        ver = (ULONGLONG)fInfo->dwFileVersionLS + ((ULONGLONG)fInfo->dwFileVersionMS << 32);
+        if (vinfo)
+          *vinfo = *fInfo;
+        result = true;
+      }
+    }
+    if (vData != buffer)
+      free(vData);
+    return result;
+  }
+
   BOOL LoadModules(HANDLE hProcess, DWORD dwProcessId) STKWLK_NOEXCEPT
   {
     // first try toolhelp32
