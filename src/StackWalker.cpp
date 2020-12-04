@@ -541,29 +541,40 @@ public:
     return 0;
   }
 
-  // return pointer to Symbol.Name
-  LPCTSTR SymFromAddr(HANDLE hProcess, DWORD64 Address, PDWORD64 pdwDisplacement, LPVOID sym) STKWLK_NOEXCEPT
+  typedef struct _T_SW_SYM_INFO
   {
-    const DWORD maxlen = StackWalker::STACKWALK_MAX_NAMELEN;
+    union
+    {
+      IMAGEHLP_SYMBOL64 baseinf;
+      T_SYMBOL_INFO     fullinf;
+    };
+    TCHAR _buffer[StackWalker::STACKWALK_MAX_NAMELEN];
+    TCHAR _padding[16];
+    enum { Empty, Base, Full } tag;   // header type
+  } T_SW_SYM_INFO;
+
+  // return pointer to Symbol.Name
+  LPCTSTR SymFromAddr(HANDLE hProcess, DWORD64 Address, PDWORD64 pdwDisplacement, T_SW_SYM_INFO & sym) STKWLK_NOEXCEPT
+  {
     if (Sym.FromAddr != NULL)
     {
-      memset(sym, 0, sizeof(T_SYMBOL_INFO));
-      T_SYMBOL_INFO * syminf = (T_SYMBOL_INFO *)sym;
-      syminf->SizeOfStruct = sizeof(T_SYMBOL_INFO);
-      syminf->MaxNameLen = maxlen;
-      BOOL rc = Sym.FromAddr(hProcess, Address, pdwDisplacement, syminf);
-      syminf->Name[(rc == FALSE) ? 0 : syminf->NameLen] = 0;
-      return (rc == FALSE) ? NULL : syminf->Name;
+      memset(&sym.fullinf, 0, sizeof(sym.fullinf));
+      sym.fullinf.SizeOfStruct = sizeof(sym.fullinf);
+      sym.fullinf.MaxNameLen = _countof(sym._buffer);
+      BOOL rc = Sym.FromAddr(hProcess, Address, pdwDisplacement, &sym.fullinf);
+      sym.fullinf.Name[(rc == FALSE) ? 0 : sym.fullinf.NameLen] = 0;
+      sym.tag = (rc == FALSE) ? T_SW_SYM_INFO::Empty : T_SW_SYM_INFO::Full;
+      return (rc == FALSE) ? NULL : sym.fullinf.Name;
     }
 #ifndef _UNICODE
     if (Sym.GetSymFromAddr != NULL)
     {
-      PIMAGEHLP_SYMBOL64 imgsym = (PIMAGEHLP_SYMBOL64)sym;
-      memset(sym, 0, sizeof(IMAGEHLP_SYMBOL64) + (maxlen + 2) * sizeof(imgsym->Name[0]));
-      imgsym->SizeOfStruct = sizeof(IMAGEHLP_SYMBOL64);
-      imgsym->MaxNameLength = maxlen;
-      BOOL rc = Sym.GetSymFromAddr(hProcess, Address, pdwDisplacement, imgsym);
-      return (rc == FALSE) ? NULL : imgsym->Name;
+      memset(&sym, 0, sizeof(sym));
+      sym.baseinf.SizeOfStruct = sizeof(sym.baseinf);
+      sym.baseinf.MaxNameLength = _countof(sym._buffer);
+      BOOL rc = Sym.GetSymFromAddr(hProcess, Address, pdwDisplacement, &sym.baseinf);
+      sym.tag = (rc == FALSE) ? T_SW_SYM_INFO::Empty : T_SW_SYM_INFO::Base;
+      return (rc == FALSE) ? NULL : sym.baseinf.Name;
     }
 #endif
     SetLastError(ERROR_FUNCTION_NOT_CALLED);
@@ -877,6 +888,9 @@ public:
   }
 };
 
+typedef StackWalkerInternal::T_SW_SYM_INFO        T_SW_SYM_INFO;
+typedef StackWalkerInternal::T_IMAGEHLP_MODULE64  T_IMAGEHLP_MODULE64;
+
 // #############################################################
 
 #if defined(_MSC_VER) && _MSC_VER >= 1400 && _MSC_VER < 1900
@@ -1118,14 +1132,14 @@ BOOL StackWalker::ShowCallstack(HANDLE                    hThread,
                                 PReadProcessMemoryRoutine readMemoryFunction,
                                 LPVOID                    pUserData) STKWLK_NOEXCEPT
 {
-  CONTEXT                                   c;
-  CallstackEntry                            csEntry;
-  LPVOID                                    pSym = NULL;
-  StackWalkerInternal::T_IMAGEHLP_MODULE64  Module;
-  T_IMAGEHLP_LINE64                         Line;
-  int                                       frameNum;
-  bool                                      bLastEntryCalled = true;
-  int                                       curRecursionCount = 0;
+  CONTEXT              c;
+  CallstackEntry       csEntry;
+  T_SW_SYM_INFO        symInf;
+  T_IMAGEHLP_MODULE64  Module;
+  T_IMAGEHLP_LINE64    Line;
+  int                  frameNum;
+  bool                 bLastEntryCalled = true;
+  int                  curRecursionCount = 0;
 
   if (m_modulesLoaded == FALSE)
     this->LoadModules(); // ignore the result...
@@ -1210,11 +1224,6 @@ BOOL StackWalker::ShowCallstack(HANDLE                    hThread,
 #error "Platform not supported!"
 #endif
 
-  const size_t nSymSize = sizeof(T_SYMBOL_INFO) + (STACKWALK_MAX_NAMELEN + 16) * sizeof(TCHAR);
-  pSym = malloc(nSymSize);
-  if (!pSym)
-    goto cleanup; // not enough memory...
-
   memset(&Line, 0, sizeof(Line));
   Line.SizeOfStruct = sizeof(Line);
 
@@ -1259,7 +1268,7 @@ BOOL StackWalker::ShowCallstack(HANDLE                    hThread,
     {
       // we seem to have a valid PC
       // show procedure info (SymGetSymFromAddr64())
-      LPCTSTR sname = m_sw->SymFromAddr(m_hProcess, s.AddrPC.Offset, &csEntry.offsetFromSmybol, pSym);
+      LPCTSTR sname = m_sw->SymFromAddr(m_hProcess, s.AddrPC.Offset, &csEntry.offsetFromSmybol, symInf);
       if (sname != NULL)
       {
         MyStrCpy(csEntry.name, STACKWALK_MAX_NAMELEN, sname);
@@ -1351,10 +1360,6 @@ BOOL StackWalker::ShowCallstack(HANDLE                    hThread,
     }
   } // for ( frameNum )
 
-cleanup:
-  if (pSym)
-    free(pSym);
-
   if (bLastEntryCalled == false)
     this->OnCallstackEntry(lastEntry, csEntry);
 
@@ -1382,23 +1387,18 @@ BOOL StackWalker::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
     return FALSE;
 
   // Show object info (SymGetSymFromAddr64())
-  DWORD64      dwAddress = (DWORD64)pObject;
-  DWORD64      dwDisplacement = 0;
-  const SIZE_T symSize = sizeof(T_SYMBOL_INFO) + (STACKWALK_MAX_NAMELEN + 16) * sizeof(TCHAR);
-  LPVOID pSym = malloc(symSize);
-  if (!pSym)
-    return FALSE;
-  LPCTSTR sname = m_sw->SymFromAddr(m_hProcess, dwAddress, &dwDisplacement, pSym);
+  T_SW_SYM_INFO symInf;
+  DWORD64 dwAddress = (DWORD64)pObject;
+  DWORD64 dwDisplacement = 0;
+  LPCTSTR sname = m_sw->SymFromAddr(m_hProcess, dwAddress, &dwDisplacement, symInf);
   if (sname == NULL)
   {
     this->OnDbgHelpErr(_T("SymGetSymFromAddr"), GetLastError(), dwAddress);
-    free(pSym);
     return FALSE;
   }
   // Object name output
   this->OnOutput(sname);
 
-  free(pSym);
   return TRUE;
 };
 
