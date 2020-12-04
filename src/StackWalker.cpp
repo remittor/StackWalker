@@ -658,6 +658,13 @@ private:
     LPVOID EntryPoint;
   } MODULEINFO, *LPMODULEINFO;
 
+  typedef struct _SW_MODULE_INFO
+  {
+    HMODULE   hMods[1024];
+    TCHAR     szImgName[2048];
+    TCHAR     szModName[2048];
+  } SW_MODULE_INFO, *PSW_MODULE_INFO;
+
   BOOL GetModuleListPSAPI(HANDLE hProcess) STKWLK_NOEXCEPT
   {
     HINSTANCE hPsapi;
@@ -666,15 +673,12 @@ private:
     DWORD (WINAPI * GetModuleBaseName)(HANDLE hProcess, HMODULE hModule, LPTSTR lpFilename, DWORD nSize);
     BOOL  (WINAPI * GetModuleInformation)(HANDLE hProcess, HMODULE hModule, LPMODULEINFO pmi, DWORD nSize);
 
-    DWORD i;
-    //ModuleEntry e;
-    DWORD        cbNeeded;
-    MODULEINFO   mi;
-    HMODULE*     hMods = NULL;
-    LPTSTR       tt = NULL;
-    LPTSTR       tt2 = NULL;
-    const SIZE_T TTBUFLEN = 8096;
-    int          cnt = 0;
+    MODULEINFO       mi;
+    SW_MODULE_INFO * mList = NULL;
+    DWORD            mListSize = 0;
+    size_t           mNumbers;
+    size_t           i;
+    int              cnt = 0;
 
     hPsapi = LoadLibraryW(L"psapi.dll");
     if (hPsapi == NULL)
@@ -691,42 +695,33 @@ private:
     GetProcAddrEx(fcnt, hPsapi, "GetModuleBaseNameA", (LPVOID*)&GetModuleBaseName);
 #endif
     if (fcnt < 4)
-    {
-      // we couldn't find all functions
-      FreeLibrary(hPsapi);
-      return FALSE;
-    }
+      goto cleanup;  // we couldn't find all functions
 
-    hMods = (HMODULE*)malloc(sizeof(HMODULE) * (TTBUFLEN / sizeof(HMODULE)));
-    tt  = (LPTSTR) malloc(sizeof(TCHAR) * TTBUFLEN);
-    tt2 = (LPTSTR) malloc(sizeof(TCHAR) * TTBUFLEN);
-    if ((hMods == NULL) || (tt == NULL) || (tt2 == NULL))
+    mList = (SW_MODULE_INFO*) malloc(sizeof(SW_MODULE_INFO));
+    if (mList == NULL)
       goto cleanup;
 
-    if (!EnumProcessModules(hProcess, hMods, TTBUFLEN, &cbNeeded))
-    {
-      //_ftprintf(fLogFile, _T("%lu: EPM failed, GetLastError = %lu\n"), g_dwShowCount, gle );
+    if (!EnumProcessModules(hProcess, mList->hMods, sizeof(mList->hMods), &mListSize))
       goto cleanup;
-    }
 
-    if (cbNeeded > TTBUFLEN)
-    {
-      //_ftprintf(fLogFile, _T("%lu: More than %lu module handles. Huh?\n"), g_dwShowCount, lenof( hMods ) );
+    if (mListSize > sizeof(mList->hMods))
       goto cleanup;
-    }
 
-    for (i = 0; i < cbNeeded / sizeof(hMods[0]); i++)
+    mNumbers = (size_t)mListSize / sizeof(mList->hMods[0]);
+    for (i = 0; i < mNumbers; i++)
     {
+      HMODULE hMod = mList->hMods[i];
       // base address, size
-      GetModuleInformation(hProcess, hMods[i], &mi, sizeof(mi));
+      GetModuleInformation(hProcess, hMod, &mi, sizeof(mi));
       // image file name
-      tt[0] = 0;
-      GetModuleFileNameEx(hProcess, hMods[i], tt, TTBUFLEN);
+      mList->szImgName[0] = 0;
+      GetModuleFileNameEx(hProcess, hMod, mList->szImgName, _countof(mList->szImgName) - 1);
       // module name
-      tt2[0] = 0;
-      GetModuleBaseName(hProcess, hMods[i], tt2, TTBUFLEN);
+      mList->szModName[0] = 0;
+      GetModuleBaseName(hProcess, hMod, mList->szModName, _countof(mList->szModName) - 1);
 
-      DWORD dwRes = this->LoadModule(hProcess, tt, tt2, (DWORD64)mi.lpBaseOfDll, mi.SizeOfImage);
+      DWORD dwRes = this->LoadModule(hProcess, mList->szImgName, mList->szModName,
+                                    (DWORD64)mi.lpBaseOfDll, mi.SizeOfImage);
       if (dwRes != ERROR_SUCCESS)
         this->m_parent->OnDbgHelpErr(_T("LoadModule"), dwRes, 0);
       cnt++;
@@ -735,12 +730,8 @@ private:
   cleanup:
     if (hPsapi != NULL)
       FreeLibrary(hPsapi);
-    if (tt2 != NULL)
-      free(tt2);
-    if (tt != NULL)
-      free(tt);
-    if (hMods != NULL)
-      free(hMods);
+    if (mList != NULL)
+      free(mList);
 
     return cnt != 0;
   } // GetModuleListPSAPI
