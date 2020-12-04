@@ -259,6 +259,7 @@ public:
     m_hDbhHelp = NULL;
     m_hProcess = hProcess;
     m_SymInitialized = FALSE;
+    m_IHM64Version = 0;      // unknown version
     memset(&Sym, 0, sizeof(Sym));
     m_ctx.ContextFlags = 0;
     if (ctx != NULL)
@@ -418,6 +419,7 @@ public:
   HMODULE m_hDbhHelp;
   HANDLE  m_hProcess;
   BOOL    m_SymInitialized;
+  char    m_IHM64Version;      // actual version of IMAGEHLP_MODULE64 struct
 
 #pragma pack(push, 8)
   struct IMAGEHLP_MODULE64_V2
@@ -849,16 +851,24 @@ public:
       return FALSE;
     }
     // First try to use the larger ModuleInfo-Structure
-    modInfo.SizeOfStruct = sizeof(IMAGEHLP_MODULE64_V3);
-    static bool s_useV3Version = true;
-    if (s_useV3Version)
+    if (m_IHM64Version == 0 || m_IHM64Version == 3)
     {
+      modInfo.SizeOfStruct = sizeof(IMAGEHLP_MODULE64_V3);
       if (Sym.GetModuleInfo(hProcess, baseAddr, &modInfo) != FALSE)
       {
         modInfo.SizeOfStruct = sizeof(IMAGEHLP_MODULE64_V3);
+        if (m_IHM64Version == 0)
+          m_IHM64Version = 3;
         return TRUE;
       }
-      s_useV3Version = false; // to prevent unnecessary calls with the larger struct...
+      if (m_IHM64Version == 3)
+      {
+        SetLastError(ERROR_DLL_INIT_FAILED);
+        return FALSE;
+      }
+      if (GetLastError() != ERROR_INVALID_PARAMETER)
+        return FALSE;
+      // try V2 struct only when SymGetModuleInfo returned error 87
       memset(&modInfo, 0, sizeof(modInfo));
     }
 
@@ -867,6 +877,8 @@ public:
     if (Sym.GetModuleInfo(hProcess, baseAddr, &modInfo) != FALSE)
     {
       modInfo.SizeOfStruct = sizeof(IMAGEHLP_MODULE64_V2);
+      if (m_IHM64Version == 0)
+        m_IHM64Version = 2; // to prevent unnecessary calls with the larger V3 struct...
       return TRUE;
     }
     SetLastError(ERROR_DLL_INIT_FAILED);
