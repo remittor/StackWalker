@@ -329,6 +329,8 @@ public:
 
   BOOL Init(LPCTSTR szSymPath) STKWLK_NOEXCEPT
   {
+    TCHAR buf[StackWalker::STACKWALK_MAX_NAMELEN];
+
     if (m_parent == NULL)
       return FALSE;
 
@@ -389,7 +391,15 @@ public:
 
     if (m_hDbhHelp == NULL)
       return FALSE;
-    
+
+    ULONGLONG verFile = 0;
+    memset(buf, 0, sizeof(buf));
+    DWORD dwLen = GetModuleFileName(m_hDbhHelp, buf, _countof(buf)-1);
+    buf[(dwLen == 0) ? 0 : _countof(buf)-1] = 0;
+    if (_tcslen(buf) > 0)
+      GetFileVersion(buf, verFile);
+    this->m_parent->OnLoadDbgHelp(verFile, buf);
+
     memset(&Sym, 0, sizeof(Sym));
     int fcnt = 0;
     GetProcAddrEx(fcnt, m_hDbhHelp, "SymCleanup", (LPVOID*)&Sym.Cleanup);
@@ -414,6 +424,7 @@ public:
 
     if (fcnt < 11)
     {
+      this->m_parent->OnDbgHelpErr(_T("LoadDbgHelp"), ERROR_INVALID_TABLE, 0);
       UnloadDbgHelpLib();
       return FALSE;
     }
@@ -442,10 +453,10 @@ public:
     //symOptions |= SYMOPT_NO_PROMPTS;
     symOptions = Sym.SetOptions(symOptions);
 
-    TCHAR buf[StackWalker::STACKWALK_MAX_NAMELEN] = {0};
+    memset(buf, 0, sizeof(buf));
     if (Sym.GetSearchPath != NULL)
     {
-      if (Sym.GetSearchPath(m_hProcess, buf, StackWalker::STACKWALK_MAX_NAMELEN) == FALSE)
+      if (Sym.GetSearchPath(m_hProcess, buf, _countof(buf) - 1) == FALSE)
         this->m_parent->OnDbgHelpErr(_T("SymGetSearchPath"), GetLastError(), 0);
     }
     TCHAR szUserName[1024] = {0};
@@ -1555,6 +1566,23 @@ void StackWalker::OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) STKW
   _sntprintf_s(buffer, maxLen, _T("ERROR: %s, GetLastError: %d (Address: %p)\n"), szFuncName, gle,
               (LPVOID)addr);
   buffer[STACKWALK_MAX_NAMELEN - 1] = 0;
+  OnOutput(buffer);
+}
+
+void StackWalker::OnLoadDbgHelp(ULONGLONG verFile, LPCTSTR szDllPath) STKWLK_NOEXCEPT
+{
+  TCHAR  buffer[STACKWALK_MAX_NAMELEN];
+  size_t maxLen = _countof(buffer);
+#if _MSC_VER >= 1400
+  maxLen = _TRUNCATE;
+#endif
+  DWORD v4 = (DWORD)(verFile & 0xFFFF);
+  DWORD v3 = (DWORD)((verFile >> 16) & 0xFFFF);
+  DWORD v2 = (DWORD)((verFile >> 32) & 0xFFFF);
+  DWORD v1 = (DWORD)((verFile >> 48) & 0xFFFF);
+  _sntprintf_s(buffer, maxLen, _T("LoadDbgHelp: FileVer: %d.%d.%d.%d, Path: \"%s\"\n"),
+               v1, v2, v3, v4, szDllPath);
+  buffer[_countof(buffer) - 1] = 0;
   OnOutput(buffer);
 }
 

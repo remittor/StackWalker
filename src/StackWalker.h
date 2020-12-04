@@ -214,6 +214,7 @@ protected:
     lastEntry
   } CallstackEntryType;
 
+  virtual void OnLoadDbgHelp(ULONGLONG verFile, LPCTSTR szDllPath) STKWLK_NOEXCEPT;
   virtual void OnSymInit(LPCTSTR szSearchPath, DWORD symOptions, LPCTSTR szUserName) STKWLK_NOEXCEPT;
   virtual void OnLoadModule(LPCTSTR   img,
                             LPCTSTR   mod,
@@ -255,6 +256,7 @@ private:
 #define LPCTSTR  LPCWSTR
 #define LPTSTR   LPWSTR
 #endif
+  virtual void OnLoadDbgHelp(ULONGLONG, LPCTSTR) STKWLK_PROTECT_VM;
   virtual void OnSymInit(LPCTSTR, DWORD, LPCTSTR) STKWLK_PROTECT_VM;
   virtual void OnLoadModule(LPCTSTR, LPCTSTR, DWORD64, DWORD, DWORD, LPCTSTR, LPCTSTR, ULONGLONG) STKWLK_PROTECT_VM;
   virtual void OnDbgHelpErr(LPCTSTR, DWORD, DWORD64) STKWLK_PROTECT_VM;
