@@ -1565,41 +1565,32 @@ void StackWalker::OnSymInit(LPCTSTR szSearchPath, DWORD symOptions, LPCTSTR szUs
 #if _MSC_VER >= 1400
   maxLen = _TRUNCATE;
 #endif
-  _sntprintf_s(buffer, maxLen, _T("SymInit: Symbol-SearchPath: '%s', symOptions: %d, UserName: '%s'\n"),
-              szSearchPath, symOptions, szUserName);
-  buffer[STACKWALK_MAX_NAMELEN - 1] = 0;
+  _sntprintf_s(buffer, maxLen, _T("SymInit: symOptions: 0x%08X, UserName: \"%s\"\n"),
+               symOptions, szUserName);
+  buffer[_countof(buffer) - 1] = 0;
   OnOutput(buffer);
+
+  _sntprintf_s(buffer, maxLen, _T("Symbol-SearchPath: \"%s\"\n"), szSearchPath);
+  buffer[_countof(buffer) - 1] = 0;
+  OnOutput(buffer);
+
   // Also display the OS-version
-#if _MSC_VER <= 1200
-  OSVERSIONINFO ver;
-  ZeroMemory(&ver, sizeof(OSVERSIONINFO));
-  ver.dwOSVersionInfoSize = sizeof(ver);
-  if (GetVersionEx(&ver) != FALSE)
-  {
-    _sntprintf_s(buffer, maxLen, _T("OS-Version: %d.%d.%d (%s)\n"), ver.dwMajorVersion,
-                 ver.dwMinorVersion, ver.dwBuildNumber, ver.szCSDVersion);
-    buffer[STACKWALK_MAX_NAMELEN - 1] = 0;
-    OnOutput(buffer);
-  }
-#else
-  OSVERSIONINFOEX ver;
-  ZeroMemory(&ver, sizeof(OSVERSIONINFOEX));
+  OSVERSIONINFOEX ver = { 0 };
   ver.dwOSVersionInfoSize = sizeof(ver);
 #if _MSC_VER >= 1900
 #pragma warning(push)
-#pragma warning(disable : 4996)
+#pragma warning(disable : 4996)  // For fix warning "GetVersionExW was declared deprecated"
 #endif
   if (GetVersionEx((OSVERSIONINFO*)&ver) != FALSE)
   {
-    _sntprintf_s(buffer, maxLen, _T("OS-Version: %d.%d.%d (%s) 0x%x-0x%x\n"), ver.dwMajorVersion,
-                 ver.dwMinorVersion, ver.dwBuildNumber, ver.szCSDVersion, ver.wSuiteMask,
-                 ver.wProductType);
-    buffer[STACKWALK_MAX_NAMELEN - 1] = 0;
+    _sntprintf_s(buffer, maxLen, _T("OS-Version: %d.%d.%d (%s) 0x%04x-%d\n"),
+                 ver.dwMajorVersion, ver.dwMinorVersion, ver.dwBuildNumber, ver.szCSDVersion,
+                 ver.wSuiteMask, ver.wProductType);
+    buffer[_countof(buffer) - 1] = 0;
     OnOutput(buffer);
   }
 #if _MSC_VER >= 1900
 #pragma warning(pop)
-#endif
 #endif
 }
 
