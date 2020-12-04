@@ -32,6 +32,12 @@ void (*pGlobalFuncPtr)() = 0;
 // Console (printf):
 class StackWalkerToConsole : public StackWalker
 {
+public:
+  StackWalkerToConsole() : StackWalker(StackWalker::RetrieveVerbose | StackWalker::SymBuildPath)
+  { 
+    // nothing
+  }
+
 protected:
   virtual void OnOutput(LPCTSTR szText) STKWLK_NOEXCEPT
   {
