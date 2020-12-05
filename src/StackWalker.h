@@ -193,6 +193,45 @@ protected:
   }; // max name length for found symbols
 
 protected:
+  struct TFileVer
+  {
+    WORD  wMajor;
+    WORD  wMinor;
+    WORD  wBuild;
+    WORD  wRevis;
+    TFileVer() STKWLK_NOEXCEPT { zeroinit(); }
+    void zeroinit() STKWLK_NOEXCEPT { wMajor = 0; wMinor = 0; wBuild = 0; wRevis = 0; }
+    bool isEmpty() const { return !wMajor && !wMinor && !wBuild && !wRevis; }
+  };
+
+  struct TLoadDbgHelp
+  {
+    TFileVer ver;
+    LPCTSTR  szDllPath;
+  };
+  virtual void OnLoadDbgHelp(const TLoadDbgHelp & data) STKWLK_NOEXCEPT = 0;
+
+  struct TSymInit
+  {
+    LPCTSTR  szSearchPath;
+    DWORD    dwSymOptions;
+    LPCTSTR  szUserName;
+  };
+  virtual void OnSymInit(const TSymInit & data) STKWLK_NOEXCEPT = 0;
+
+  struct TLoadModule
+  {
+    LPCTSTR  imgName;
+    LPCTSTR  modName;
+    DWORD64  baseAddr;
+    DWORD    size;
+    DWORD    result;
+    LPCTSTR  symType;
+    LPCTSTR  pdbName;
+    TFileVer ver;
+  };
+  virtual void OnLoadModule(const TLoadModule & data) STKWLK_NOEXCEPT = 0;
+
   // Entry for each Callstack-Entry
   typedef struct CallstackEntry
   {
@@ -218,16 +257,6 @@ protected:
     lastEntry
   } CallstackEntryType;
 
-  virtual void OnLoadDbgHelp(ULONGLONG verFile, LPCTSTR szDllPath) STKWLK_NOEXCEPT = 0;
-  virtual void OnSymInit(LPCTSTR szSearchPath, DWORD symOptions, LPCTSTR szUserName) STKWLK_NOEXCEPT = 0;
-  virtual void OnLoadModule(LPCTSTR   img,
-                            LPCTSTR   mod,
-                            DWORD64   baseAddr,
-                            DWORD     size,
-                            DWORD     result,
-                            LPCTSTR   symType,
-                            LPCTSTR   pdbName,
-                            ULONGLONG fileVersion) STKWLK_NOEXCEPT = 0;
   virtual void OnCallstackEntry(CallstackEntryType eType, CallstackEntry& entry) STKWLK_NOEXCEPT = 0;
   virtual void OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) STKWLK_NOEXCEPT = 0;
   virtual void OnShowObject(LPVOID pObject, LPCTSTR szName) STKWLK_NOEXCEPT = 0;
@@ -260,9 +289,6 @@ private:
 #define LPCTSTR  LPCWSTR
 #define LPTSTR   LPWSTR
 #endif
-  virtual void OnLoadDbgHelp(ULONGLONG, LPCTSTR) STKWLK_PROTECT_VM;
-  virtual void OnSymInit(LPCTSTR, DWORD, LPCTSTR) STKWLK_PROTECT_VM;
-  virtual void OnLoadModule(LPCTSTR, LPCTSTR, DWORD64, DWORD, DWORD, LPCTSTR, LPCTSTR, ULONGLONG) STKWLK_PROTECT_VM;
   virtual void OnDbgHelpErr(LPCTSTR, DWORD, DWORD64) STKWLK_PROTECT_VM;
   virtual void OnOutput(LPCTSTR) STKWLK_PROTECT_VM;
 #undef  LPCTSTR
@@ -290,18 +316,11 @@ public:
     : StackWalkerBase(dwProcessId, hProcess)
   { }
 
-  virtual void OnLoadDbgHelp(ULONGLONG verFile, LPCTSTR szDllPath) STKWLK_NOEXCEPT;
+  virtual void OnLoadDbgHelp(const TLoadDbgHelp & data) STKWLK_NOEXCEPT;
 
-  virtual void OnSymInit(LPCTSTR szSearchPath, DWORD symOptions, LPCTSTR szUserName) STKWLK_NOEXCEPT;
+  virtual void OnSymInit(const TSymInit & data) STKWLK_NOEXCEPT;
 
-  virtual void OnLoadModule(LPCTSTR   img,
-                            LPCTSTR   mod,
-                            DWORD64   baseAddr,
-                            DWORD     size,
-                            DWORD     result,
-                            LPCTSTR   symType,
-                            LPCTSTR   pdbName,
-                            ULONGLONG fileVersion) STKWLK_NOEXCEPT;
+  virtual void OnLoadModule(const TLoadModule & data) STKWLK_NOEXCEPT;
 
   virtual void OnCallstackEntry(CallstackEntryType eType, CallstackEntry & entry) STKWLK_NOEXCEPT;
 

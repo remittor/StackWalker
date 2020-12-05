@@ -410,13 +410,14 @@ public:
     if (m_hDbhHelp == NULL)
       return FALSE;
 
-    ULONGLONG verFile = 0;
+    StackWalkerBase::TLoadDbgHelp data;
     memset(buf, 0, sizeof(buf));
     DWORD dwLen = GetModuleFileName(m_hDbhHelp, buf, _countof(buf)-1);
     buf[(dwLen == 0) ? 0 : _countof(buf)-1] = 0;
-    if (_tcslen(buf) > 0)
-      GetFileVersion(buf, verFile);
-    this->m_parent->OnLoadDbgHelp(verFile, buf);
+    if (dwLen > 0)
+      GetFileVersion(buf, data.ver);
+    data.szDllPath = buf[0] ? buf : NULL;
+    this->m_parent->OnLoadDbgHelp(data);
 
     memset(&Sym, 0, sizeof(Sym));
     int fcnt = 0;
@@ -480,7 +481,11 @@ public:
     TCHAR szUserName[1024] = {0};
     DWORD dwSize = 1024;
     GetUserName(szUserName, &dwSize);
-    this->m_parent->OnSymInit(buf, symOptions, szUserName);
+    StackWalkerBase::TSymInit idata;
+    idata.szSearchPath = buf[0] ? buf : NULL;
+    idata.dwSymOptions = symOptions;
+    idata.szUserName = szUserName;
+    this->m_parent->OnSymInit(idata);
 
     return TRUE;
   }
@@ -822,7 +827,7 @@ private:
   DWORD LoadModule(HANDLE hProcess, LPCTSTR img, LPCTSTR mod, DWORD64 baseAddr, DWORD size) STKWLK_NOEXCEPT
   {
     DWORD result = ERROR_SUCCESS;
-    ULONGLONG fileVersion = 0;
+    TFileVer fileVersion;
 
     if (img == NULL)
       return ERROR_BAD_ARGUMENTS;
@@ -879,23 +884,30 @@ private:
             break;
         }
       }
-      LPCTSTR pdbName = Module.LoadedImageName;
-      if (Module.LoadedPdbName[0] != 0)
-        pdbName = Module.LoadedPdbName;
-      this->m_parent->OnLoadModule(img, mod, baseAddr, size, result, szSymType, pdbName,
-                                   fileVersion);
+      StackWalkerBase::TLoadModule data;
+      data.imgName = img;
+      data.modName = mod;
+      data.baseAddr = baseAddr;
+      data.size = size;
+      data.result = result;
+      data.symType = szSymType;
+      data.pdbName = Module.LoadedPdbName[0] ? Module.LoadedPdbName : Module.LoadedImageName;
+      data.ver = fileVersion;
+      this->m_parent->OnLoadModule(data);
     }
     return result;
   }
 
 public:
-  bool GetFileVersion(LPCTSTR filename, ULONGLONG & ver, VS_FIXEDFILEINFO * vinfo = NULL)
+  typedef StackWalkerBase::TFileVer  TFileVer;
+
+  bool GetFileVersion(LPCTSTR filename, TFileVer & ver, VS_FIXEDFILEINFO * vinfo = NULL)
   {
     bool result = false;
     BYTE buffer[2048];
     LPVOID vData = (LPVOID)buffer;
     VS_FIXEDFILEINFO * fInfo = NULL;
-    ver = 0;
+    ver.zeroinit();
     DWORD dwHandle = 0;
     DWORD dwSize = GetFileVersionInfoSize(filename, &dwHandle);
     if (dwSize == 0 || dwSize > 256 * 1024)
@@ -912,7 +924,10 @@ public:
       BOOL rc = VerQueryValue(vData, _T("\\"), (LPVOID*)&fInfo, &len);
       if (rc != FALSE && fInfo != NULL && len > 0)
       {
-        ver = (ULONGLONG)fInfo->dwFileVersionLS + ((ULONGLONG)fInfo->dwFileVersionMS << 32);
+        ver.wMajor = (WORD)(fInfo->dwFileVersionMS >> 16);
+        ver.wMinor = (WORD)fInfo->dwFileVersionMS;
+        ver.wBuild = (WORD)(fInfo->dwFileVersionLS >> 16);
+        ver.wRevis = (WORD)fInfo->dwFileVersionLS;
         if (vinfo)
           *vinfo = *fInfo;
         result = true;
@@ -1545,29 +1560,19 @@ BOOL WINAPI StackWalkerBase::myReadProcMem(HANDLE  hProcess,
 
 // =====================================================================================
 
-void StackWalkerDemo::OnLoadModule(LPCTSTR   img,
-                               LPCTSTR   mod,
-                               DWORD64   baseAddr,
-                               DWORD     size,
-                               DWORD     result,
-                               LPCTSTR   symType,
-                               LPCTSTR   pdbName,
-                               ULONGLONG fileVersion) STKWLK_NOEXCEPT
+void StackWalkerDemo::OnLoadModule(const TLoadModule & a) STKWLK_NOEXCEPT
 {
   TCHAR buf[STACKWALK_MAX_NAMELEN];
-  if (fileVersion == 0)
+  if (a.ver.isEmpty())
     MyTStrFmt(buf, _countof(buf), _T("%s:%s (%p), size: %d (result: %d), SymType: '%s', PDB: '%s'\n"),
-              img, mod, (LPVOID)baseAddr, size, result, symType, pdbName);
+              a.imgName, a.modName, (LPVOID)a.baseAddr, a.size, a.result, a.symType, a.pdbName);
   else
   {
-    DWORD v4 = (DWORD)(fileVersion & 0xFFFF);
-    DWORD v3 = (DWORD)((fileVersion >> 16) & 0xFFFF);
-    DWORD v2 = (DWORD)((fileVersion >> 32) & 0xFFFF);
-    DWORD v1 = (DWORD)((fileVersion >> 48) & 0xFFFF);
     MyTStrFmt(
         buf, _countof(buf),
         _T("%s:%s (%p), size: %d (result: %d), SymType: '%s', PDB: '%s', fileVersion: %d.%d.%d.%d\n"),
-        img, mod, (LPVOID)baseAddr, size, result, symType, pdbName, v1, v2, v3, v4);
+        a.imgName, a.modName, (LPVOID)a.baseAddr, a.size, a.result, a.symType, a.pdbName,
+        a.ver.wMajor, a.ver.wMinor, a.ver.wBuild, a.ver.wRevis);
   }
   OnOutput(buf);
 }
@@ -1613,26 +1618,22 @@ void StackWalkerDemo::OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) 
   OnOutput(buf);
 }
 
-void StackWalkerDemo::OnLoadDbgHelp(ULONGLONG verFile, LPCTSTR szDllPath) STKWLK_NOEXCEPT
+void StackWalkerDemo::OnLoadDbgHelp(const TLoadDbgHelp & a) STKWLK_NOEXCEPT
 {
   TCHAR buf[STACKWALK_MAX_NAMELEN];
-  DWORD v4 = (DWORD)(verFile & 0xFFFF);
-  DWORD v3 = (DWORD)((verFile >> 16) & 0xFFFF);
-  DWORD v2 = (DWORD)((verFile >> 32) & 0xFFFF);
-  DWORD v1 = (DWORD)((verFile >> 48) & 0xFFFF);
   MyTStrFmt(buf, _countof(buf), _T("LoadDbgHelp: FileVer: %d.%d.%d.%d, Path: \"%s\"\n"),
-            v1, v2, v3, v4, szDllPath);
+            a.ver.wMajor, a.ver.wMinor, a.ver.wBuild, a.ver.wRevis, a.szDllPath);
   OnOutput(buf);
 }
 
-void StackWalkerDemo::OnSymInit(LPCTSTR szSearchPath, DWORD symOptions, LPCTSTR szUserName) STKWLK_NOEXCEPT
+void StackWalkerDemo::OnSymInit(const TSymInit & data) STKWLK_NOEXCEPT
 {
   TCHAR buf[STACKWALK_MAX_NAMELEN];
   MyTStrFmt(buf, _countof(buf), _T("SymInit: symOptions: 0x%08X, UserName: \"%s\"\n"),
-            symOptions, szUserName);
+            data.dwSymOptions, data.szUserName);
   OnOutput(buf);
 
-  MyTStrFmt(buf, _countof(buf), _T("Symbol-SearchPath: \"%s\"\n"), szSearchPath);
+  MyTStrFmt(buf, _countof(buf), _T("Symbol-SearchPath: \"%s\"\n"), data.szSearchPath);
   OnOutput(buf);
 
   // Also display the OS-version
