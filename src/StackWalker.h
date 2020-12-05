@@ -230,7 +230,7 @@ protected:
                             ULONGLONG fileVersion) STKWLK_NOEXCEPT = 0;
   virtual void OnCallstackEntry(CallstackEntryType eType, CallstackEntry& entry) STKWLK_NOEXCEPT = 0;
   virtual void OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) STKWLK_NOEXCEPT = 0;
-  virtual void OnOutput(LPCTSTR szText) STKWLK_NOEXCEPT = 0;
+  virtual void OnShowObject(LPVOID pObject, LPCTSTR szName) STKWLK_NOEXCEPT = 0;
 
   StackWalkerInternal* m_sw;
   HANDLE               m_hProcess;
@@ -304,6 +304,8 @@ public:
                             ULONGLONG fileVersion) STKWLK_NOEXCEPT;
 
   virtual void OnCallstackEntry(CallstackEntryType eType, CallstackEntry & entry) STKWLK_NOEXCEPT;
+
+  virtual void OnShowObject(LPVOID pObject, LPCTSTR szName) STKWLK_NOEXCEPT;
 
   virtual void OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) STKWLK_NOEXCEPT;
 

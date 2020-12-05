@@ -1465,10 +1465,12 @@ BOOL StackWalkerBase::ShowCallstack(const CONTEXT * context) STKWLK_NOEXCEPT
 
 BOOL StackWalkerBase::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
 {
+  BOOL result = FALSE;
+  LPCTSTR sname = NULL;
   if (this->m_sw == NULL)
   {
     SetLastError(ERROR_OUTOFMEMORY);
-    return FALSE;
+    goto fin;
   }
   // Load modules if not done yet
   if (m_modulesLoaded == FALSE)
@@ -1478,27 +1480,27 @@ BOOL StackWalkerBase::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
   if (this->m_sw->m_hDbhHelp == NULL)
   {
     SetLastError(ERROR_DLL_INIT_FAILED);
-    return FALSE;
+    goto fin;
   }
 
   // SymGetSymFromAddr64 or SymFromAddr is required
   if (m_sw->Sym.GetSymFromAddr == NULL && m_sw->Sym.FromAddr == NULL)
-    return FALSE;
+    goto fin;
 
   // Show object info (SymGetSymFromAddr64())
   T_SW_SYM_INFO symInf;
   DWORD64 dwAddress = (DWORD64)pObject;
   DWORD64 dwDisplacement = 0;
-  LPCTSTR sname = m_sw->SymFromAddr(m_hProcess, dwAddress, &dwDisplacement, symInf);
+  sname = m_sw->SymFromAddr(m_hProcess, dwAddress, &dwDisplacement, symInf);
   if (sname == NULL)
-  {
     this->OnDbgHelpErr(_T("SymGetSymFromAddr"), GetLastError(), dwAddress);
-    return FALSE;
-  }
-  // Object name output
-  this->OnOutput(sname);
+  else
+    result = TRUE;
 
-  return TRUE;
+fin:  
+  // Object name output
+  this->OnShowObject(pObject, sname);
+  return result;
 };
 
 BOOL WINAPI StackWalkerBase::myReadProcMem(HANDLE  hProcess,
@@ -1585,6 +1587,18 @@ void StackWalkerDemo::OnCallstackEntry(CallstackEntryType eType, CallstackEntry&
     buffer[STACKWALK_MAX_NAMELEN - 1] = 0;
     OnOutput(buffer);
   }
+}
+
+void StackWalkerDemo::OnShowObject(LPVOID pObject, LPCTSTR szName) STKWLK_NOEXCEPT
+{
+  TCHAR  buffer[STACKWALK_MAX_NAMELEN];
+  size_t maxLen = _countof(buffer);
+#if _MSC_VER >= 1400
+  maxLen = _TRUNCATE;
+#endif
+  _sntprintf_s(buffer, maxLen, _T("Object: Addr: %p, Name: \"%s\"\n"), pObject, szName);
+  buffer[_countof(buffer) - 1] = 0;
+  OnOutput(buffer);
 }
 
 void StackWalkerDemo::OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) STKWLK_NOEXCEPT
