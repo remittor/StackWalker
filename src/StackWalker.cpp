@@ -1277,6 +1277,7 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE                    hThread,
   int                  frameNum;
   bool                 bLastEntryCalled = true;
   int                  curRecursionCount = 0;
+  bool                 isThreadSuspended = false;
 
   if (this->m_sw == NULL)
   {
@@ -1294,6 +1295,9 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE                    hThread,
 
   s_readMemoryFunction = readMemoryFunction;
   s_readMemoryFunction_UserData = pUserData;
+
+  if (hThread == NULL)
+    hThread = GetCurrentThread();
 
   if (context == NULL)
   {
@@ -1327,7 +1331,10 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE                    hThread,
     }
     else
     {
-      SuspendThread(hThread);
+      DWORD dwCount = SuspendThread(hThread);
+      if (dwCount == (DWORD)-1)
+        return FALSE;
+      isThreadSuspended = true;
       memset(&c, 0, sizeof(CONTEXT));
       c.ContextFlags = STKWLK_CONTEXT_FLAGS;
 
@@ -1514,7 +1521,7 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE                    hThread,
   if (bLastEntryCalled == false)
     this->OnCallstackEntry(csEntry);
 
-  if (context == NULL)
+  if (isThreadSuspended)
     ResumeThread(hThread);
 
   return TRUE;
