@@ -232,34 +232,46 @@ protected:
   };
   virtual void OnLoadModule(const TLoadModule & data) STKWLK_NOEXCEPT = 0;
 
-  // Entry for each Callstack-Entry
-  typedef struct CallstackEntry
-  {
-    DWORD64 offset; // if 0, we have no valid entry
-    TCHAR   name[STACKWALK_MAX_NAMELEN];
-    TCHAR   undName[STACKWALK_MAX_NAMELEN];
-    TCHAR   undFullName[STACKWALK_MAX_NAMELEN];
-    DWORD64 offsetFromSmybol;
-    DWORD   offsetFromLine;
-    DWORD   lineNumber;
-    TCHAR   lineFileName[STACKWALK_MAX_NAMELEN];
-    DWORD   symType;
-    LPCTSTR symTypeString;
-    TCHAR   moduleName[STACKWALK_MAX_NAMELEN];
-    DWORD64 baseOfImage;
-    TCHAR   loadedImageName[STACKWALK_MAX_NAMELEN];
-  } CallstackEntry;
-
-  typedef enum CallstackEntryType
+  enum CallstackEntryType
   {
     firstEntry,
     nextEntry,
     lastEntry
-  } CallstackEntryType;
+  };
+  struct TCallstackEntry      // Entry for each Callstack-Entry
+  {
+    CallstackEntryType type;
+    DWORD64  offset;           // if 0, we have no valid entry
+    LPCTSTR  name;
+    LPCTSTR  undName;
+    LPCTSTR  undFullName;
+    DWORD64  offsetFromSymbol;
+    DWORD    offsetFromLine;
+    DWORD    lineNumber;
+    LPCTSTR  lineFileName;
+    DWORD    symType;
+    LPCTSTR  symTypeString;
+    LPCTSTR  moduleName;
+    DWORD64  baseOfImage;
+    LPCTSTR  loadedImageName;
+  };
+  virtual void OnCallstackEntry(const TCallstackEntry & entry) STKWLK_NOEXCEPT = 0;
 
-  virtual void OnCallstackEntry(CallstackEntryType eType, CallstackEntry& entry) STKWLK_NOEXCEPT = 0;
-  virtual void OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) STKWLK_NOEXCEPT = 0;
-  virtual void OnShowObject(LPVOID pObject, LPCTSTR szName) STKWLK_NOEXCEPT = 0;
+  struct TShowObject
+  {
+    LPVOID   pObject;
+    LPCTSTR  szName;
+  };
+  virtual void OnShowObject(const TShowObject & data) STKWLK_NOEXCEPT = 0;
+
+  struct TDbgHelpErr
+  {
+    LPCTSTR  szFuncName;
+    DWORD    gle;
+    DWORD64  addr;
+    TDbgHelpErr(LPCTSTR szFuncName, DWORD gle = 0, DWORD64 addr = 0) STKWLK_NOEXCEPT;
+  };
+  virtual void OnDbgHelpErr(const TDbgHelpErr & data) STKWLK_NOEXCEPT = 0;
 
   StackWalkerInternal* m_sw;
   HANDLE               m_hProcess;
@@ -278,21 +290,6 @@ protected:
                                       LPDWORD lpNumberOfBytesRead) STKWLK_NOEXCEPT;
 
   friend StackWalkerInternal;
-
-private:
-// It is necessary to block the using of virtual methods with invalid types of string arguments!
-#define STKWLK_PROTECT_VM  STKWLK_NOEXCEPT STKWLK_FINAL { }
-#ifdef _UNICODE
-#define LPCTSTR  LPCSTR
-#define LPTSTR   LPSTR
-#else
-#define LPCTSTR  LPCWSTR
-#define LPTSTR   LPWSTR
-#endif
-  virtual void OnDbgHelpErr(LPCTSTR, DWORD, DWORD64) STKWLK_PROTECT_VM;
-  virtual void OnOutput(LPCTSTR) STKWLK_PROTECT_VM;
-#undef  LPCTSTR
-#undef  LPTSTR
 }; // class StackWalkerBase
 
 
@@ -322,11 +319,11 @@ public:
 
   virtual void OnLoadModule(const TLoadModule & data) STKWLK_NOEXCEPT;
 
-  virtual void OnCallstackEntry(CallstackEntryType eType, CallstackEntry & entry) STKWLK_NOEXCEPT;
+  virtual void OnCallstackEntry(const TCallstackEntry & entry) STKWLK_NOEXCEPT;
 
-  virtual void OnShowObject(LPVOID pObject, LPCTSTR szName) STKWLK_NOEXCEPT;
+  virtual void OnShowObject(const TShowObject & data) STKWLK_NOEXCEPT;
 
-  virtual void OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) STKWLK_NOEXCEPT;
+  virtual void OnDbgHelpErr(const TDbgHelpErr & data) STKWLK_NOEXCEPT;
 
   virtual void OnOutput(LPCTSTR szText) STKWLK_NOEXCEPT;
 

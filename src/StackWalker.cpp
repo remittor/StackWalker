@@ -443,7 +443,7 @@ public:
 
     if (fcnt < 11)
     {
-      this->m_parent->OnDbgHelpErr(_T("LoadDbgHelp"), ERROR_INVALID_TABLE, 0);
+      this->OnDbgHelpErr(_T("LoadDbgHelp"), ERROR_INVALID_TABLE);
       UnloadDbgHelpLib();
       return FALSE;
     }
@@ -461,7 +461,7 @@ public:
     m_SymInitialized = Sym.Initialize(m_hProcess, szSymPath, FALSE);
     if (m_SymInitialized == FALSE)
     {
-      this->m_parent->OnDbgHelpErr(_T("SymInitialize"), GetLastError(), 0);
+      this->OnDbgHelpErr(_T("SymInitialize"), GetLastError());
       UnloadDbgHelpLib();
       return FALSE;
     }
@@ -476,7 +476,7 @@ public:
     if (Sym.GetSearchPath != NULL)
     {
       if (Sym.GetSearchPath(m_hProcess, buf, _countof(buf) - 1) == FALSE)
-        this->m_parent->OnDbgHelpErr(_T("SymGetSearchPath"), GetLastError(), 0);
+        this->OnDbgHelpErr(_T("SymGetSearchPath"), GetLastError());
     }
     TCHAR szUserName[1024] = {0};
     DWORD dwSize = 1024;
@@ -811,7 +811,7 @@ private:
       DWORD dwRes = this->LoadModule(hProcess, mList->szImgName, mList->szModName,
                                     (DWORD64)mi.lpBaseOfDll, mi.SizeOfImage);
       if (dwRes != ERROR_SUCCESS)
-        this->m_parent->OnDbgHelpErr(_T("LoadModule"), dwRes, 0);
+        this->OnDbgHelpErr(_T("LoadModule"), dwRes);
       cnt++;
     }
 
@@ -989,12 +989,28 @@ public:
     SetLastError(ERROR_DLL_INIT_FAILED);
     return FALSE;
   }
+
+  void OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle = 0, DWORD64 addr = 0) STKWLK_NOEXCEPT
+  {
+    StackWalkerBase::TDbgHelpErr data(szFuncName, gle, addr);
+    if (m_parent)
+      m_parent->OnDbgHelpErr(data);
+  }
 };
 
 typedef StackWalkerInternal::T_SW_SYM_INFO        T_SW_SYM_INFO;
 typedef StackWalkerInternal::T_IMAGEHLP_MODULE64  T_IMAGEHLP_MODULE64;
 
 // #############################################################
+
+StackWalkerBase::TDbgHelpErr::TDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) STKWLK_NOEXCEPT
+{
+  this->szFuncName = szFuncName;
+  this->gle = gle;
+  this->addr = addr;
+}
+
+// =============================================================
 
 #if defined(_MSC_VER) && _MSC_VER >= 1400 && _MSC_VER < 1900
 extern "C" void* __cdecl _getptd();
@@ -1016,6 +1032,8 @@ static PCONTEXT get_current_exception_context() STKWLK_NOEXCEPT
 #endif
   return pctx ? *pctx : NULL;
 }
+
+// =============================================================
 
 bool StackWalkerBase::Init(ExceptType extype, int options, LPCTSTR szSymPath, DWORD dwProcessId,
                            HANDLE hProcess, PEXCEPTION_POINTERS exp) STKWLK_NOEXCEPT
@@ -1212,7 +1230,7 @@ BOOL StackWalkerBase::LoadModules() STKWLK_NOEXCEPT
   szSymPath = NULL;
   if (bRet == FALSE)
   {
-    this->OnDbgHelpErr(_T("Error while initializing dbghelp.dll"), 0, 0);
+    this->OnDbgHelpErr(TDbgHelpErr(_T("Error while initializing dbghelp.dll")));
     SetLastError(ERROR_DLL_INIT_FAILED);
     return FALSE;
   }
@@ -1236,7 +1254,9 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE                    hThread,
                                 LPVOID                    pUserData) STKWLK_NOEXCEPT
 {
   CONTEXT              c;
-  CallstackEntry       csEntry;
+  TCallstackEntry      csEntry;
+  TCHAR                undName[STACKWALK_MAX_NAMELEN];
+  TCHAR                undFullName[STACKWALK_MAX_NAMELEN];
   T_SW_SYM_INFO        symInf;
   T_IMAGEHLP_MODULE64  Module;
   T_IMAGEHLP_LINE64    Line;
@@ -1346,9 +1366,6 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE                    hThread,
 #error "Platform not supported!"
 #endif
 
-  memset(&Line, 0, sizeof(Line));
-  Line.SizeOfStruct = sizeof(Line);
-
   for (frameNum = 0;; ++frameNum)
   {
     // get next stack frame (StackWalk64(), SymFunctionTableAccess64(), SymGetModuleBase64())
@@ -1361,59 +1378,57 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE                    hThread,
     if (rc == FALSE)
     {
       // INFO: "StackWalk64" does not set "GetLastError"...
-      this->OnDbgHelpErr(_T("StackWalk64"), 0, s.AddrPC.Offset);
+      this->OnDbgHelpErr(TDbgHelpErr(_T("StackWalk64"), 0, s.AddrPC.Offset));
       break;
     }
 
+    memset(&Line, 0, sizeof(Line));
+    Line.SizeOfStruct = sizeof(Line);
+
+    memset((LPVOID)&csEntry, 0, sizeof(csEntry));
     csEntry.offset = s.AddrPC.Offset;
-    csEntry.name[0] = 0;
-    csEntry.undName[0] = 0;
-    csEntry.undFullName[0] = 0;
-    csEntry.offsetFromSmybol = 0;
-    csEntry.offsetFromLine = 0;
-    csEntry.lineFileName[0] = 0;
-    csEntry.lineNumber = 0;
-    csEntry.loadedImageName[0] = 0;
-    csEntry.moduleName[0] = 0;
     if (s.AddrPC.Offset == s.AddrReturn.Offset)
     {
       if ((this->m_MaxRecursionCount > 0) && (curRecursionCount > m_MaxRecursionCount))
       {
-        this->OnDbgHelpErr(_T("StackWalk64-Endless-Callstack!"), 0, s.AddrPC.Offset);
+        this->OnDbgHelpErr(TDbgHelpErr(_T("StackWalk64-Endless-Callstack!"), 0, s.AddrPC.Offset));
         break;
       }
       curRecursionCount++;
     }
     else
       curRecursionCount = 0;
+
     if (s.AddrPC.Offset != 0)
     {
       // we seem to have a valid PC
       // show procedure info (SymGetSymFromAddr64())
-      LPCTSTR sname = m_sw->SymFromAddr(m_hProcess, s.AddrPC.Offset, &csEntry.offsetFromSmybol, symInf);
+      LPCTSTR sname = m_sw->SymFromAddr(m_hProcess, s.AddrPC.Offset, &csEntry.offsetFromSymbol, symInf);
       if (sname != NULL)
       {
-        MyStrCpy(csEntry.name, STACKWALK_MAX_NAMELEN, sname);
-        m_sw->Sym.UnDecorateName(sname, csEntry.undName, STACKWALK_MAX_NAMELEN, UNDNAME_NAME_ONLY);
-        m_sw->Sym.UnDecorateName(sname, csEntry.undFullName, STACKWALK_MAX_NAMELEN, UNDNAME_COMPLETE);
+        csEntry.name = sname;
+        m_sw->Sym.UnDecorateName(sname, undName, _countof(undName), UNDNAME_NAME_ONLY);
+        csEntry.undName = undName;
+        m_sw->Sym.UnDecorateName(sname, undFullName, _countof(undFullName), UNDNAME_COMPLETE);
+        csEntry.undFullName = undFullName;
       }
       else
       {
-        this->OnDbgHelpErr(_T("SymGetSymFromAddr"), GetLastError(), s.AddrPC.Offset);
+        this->OnDbgHelpErr(TDbgHelpErr(_T("SymGetSymFromAddr"), GetLastError(), s.AddrPC.Offset));
       }
 
       // show line number info, NT5.0-method (SymGetLineFromAddr64())
       if (m_sw->Sym.GetLineFromAddr != NULL)
       { // yes, we have SymGetLineFromAddr64()
-        BOOL rc = m_sw->Sym.GetLineFromAddr(m_hProcess, s.AddrPC.Offset, &(csEntry.offsetFromLine), &Line);
+        BOOL rc = m_sw->Sym.GetLineFromAddr(m_hProcess, s.AddrPC.Offset, &csEntry.offsetFromLine, &Line);
         if (rc != FALSE)
         {
           csEntry.lineNumber = Line.LineNumber;
-          MyStrCpy(csEntry.lineFileName, STACKWALK_MAX_NAMELEN, Line.FileName);
+          csEntry.lineFileName = Line.FileName;
         }
         else
         {
-          this->OnDbgHelpErr(_T("SymGetLineFromAddr64"), GetLastError(), s.AddrPC.Offset);
+          this->OnDbgHelpErr(TDbgHelpErr(_T("SymGetLineFromAddr64"), GetLastError(), s.AddrPC.Offset));
         }
       } // yes, we have SymGetLineFromAddr64()
 
@@ -1457,33 +1472,33 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE                    hThread,
             break;
         }
 
-        MyStrCpy(csEntry.moduleName, STACKWALK_MAX_NAMELEN, Module.ModuleName);
+        csEntry.moduleName = Module.ModuleName;
         csEntry.baseOfImage = Module.BaseOfImage;
-        MyStrCpy(csEntry.loadedImageName, STACKWALK_MAX_NAMELEN, Module.LoadedImageName);
+        csEntry.loadedImageName = Module.LoadedImageName;
       } // got module info OK
       else
       {
-        this->OnDbgHelpErr(_T("SymGetModuleInfo64"), GetLastError(), s.AddrPC.Offset);
+        this->OnDbgHelpErr(TDbgHelpErr(_T("SymGetModuleInfo64"), GetLastError(), s.AddrPC.Offset));
       }
     } // we seem to have a valid PC
 
-    CallstackEntryType et = nextEntry;
-    if (frameNum == 0)
-      et = firstEntry;
+    csEntry.type = (frameNum == 0) ? firstEntry : nextEntry;
     bLastEntryCalled = false;
-    this->OnCallstackEntry(et, csEntry);
+    this->OnCallstackEntry(csEntry);
 
     if (s.AddrReturn.Offset == 0)
     {
       bLastEntryCalled = true;
-      this->OnCallstackEntry(lastEntry, csEntry);
+      csEntry.type = lastEntry;
+      this->OnCallstackEntry(csEntry);
       SetLastError(ERROR_SUCCESS);
       break;
     }
   } // for ( frameNum )
 
+  csEntry.type = lastEntry;
   if (bLastEntryCalled == false)
-    this->OnCallstackEntry(lastEntry, csEntry);
+    this->OnCallstackEntry(csEntry);
 
   if (context == NULL)
     ResumeThread(hThread);
@@ -1527,13 +1542,16 @@ BOOL StackWalkerBase::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
     DWORD64 dwDisplacement = 0;
     sname = m_sw->SymFromAddr(m_hProcess, dwAddress, &dwDisplacement, symInf);
     if (sname == NULL)
-      this->OnDbgHelpErr(_T("SymGetSymFromAddr"), GetLastError(), dwAddress);
+      this->OnDbgHelpErr(TDbgHelpErr(_T("SymGetSymFromAddr"), GetLastError(), dwAddress));
     else
       result = TRUE;
   }
 fin:  
   // Object name output
-  this->OnShowObject(pObject, sname);
+  TShowObject data;
+  data.pObject = pObject;
+  data.szName = sname;
+  this->OnShowObject(data);
   return result;
 };
 
@@ -1577,44 +1595,45 @@ void StackWalkerDemo::OnLoadModule(const TLoadModule & a) STKWLK_NOEXCEPT
   OnOutput(buf);
 }
 
-void StackWalkerDemo::OnCallstackEntry(CallstackEntryType eType, CallstackEntry& entry) STKWLK_NOEXCEPT
+void StackWalkerDemo::OnCallstackEntry(const TCallstackEntry & entry) STKWLK_NOEXCEPT
 {
   TCHAR buf[STACKWALK_MAX_NAMELEN];
-  if ((eType != lastEntry) && (entry.offset != 0))
+  if ((entry.type != lastEntry) && (entry.offset != 0))
   {
-    if (entry.name[0] == 0)
-      MyStrCpy(entry.name, _countof(entry.name), _T("(function-name not available)"));
-    if (entry.undName[0] != 0)
-      MyStrCpy(entry.name, _countof(entry.name), entry.undName);
-    if (entry.undFullName[0] != 0)
-      MyStrCpy(entry.name, _countof(entry.name), entry.undFullName);
-    if (entry.lineFileName[0] == 0)
+    TCallstackEntry e = entry;
+    if (entry.name == NULL || entry.name[0] == 0)
+      e.name = _T("(function-name not available)");
+    if (entry.undName && entry.undName[0] != 0)
+      e.name = entry.undName;
+    if (entry.undFullName && entry.undFullName[0] != 0)
+      e.name = entry.undFullName;
+    if (entry.lineFileName == NULL || entry.lineFileName[0] == 0)
     {
-      MyStrCpy(entry.lineFileName, _countof(entry.lineFileName), _T("(filename not available)"));
+      e.lineFileName = _T("(filename not available)");
       if (entry.moduleName[0] == 0)
-        MyStrCpy(entry.moduleName, _countof(entry.moduleName), _T("(module-name not available)"));
+        e.moduleName = _T("(module-name not available)");
       MyTStrFmt(buf, _countof(buf), _T("%p (%s): %s: %s\n"),
-                (LPVOID)entry.offset, entry.moduleName, entry.lineFileName, entry.name);
+                (LPVOID)e.offset, e.moduleName, e.lineFileName, e.name);
     }
     else
       MyTStrFmt(buf, _countof(buf), _T("%s (%d): %s\n"),
-                entry.lineFileName, entry.lineNumber, entry.name);
+                e.lineFileName, e.lineNumber, e.name);
     OnOutput(buf);
   }
 }
 
-void StackWalkerDemo::OnShowObject(LPVOID pObject, LPCTSTR szName) STKWLK_NOEXCEPT
+void StackWalkerDemo::OnShowObject(const TShowObject & data) STKWLK_NOEXCEPT
 {
   TCHAR buf[STACKWALK_MAX_NAMELEN];
-  MyTStrFmt(buf, _countof(buf), _T("Object: Addr: %p, Name: \"%s\"\n"), pObject, szName);
+  MyTStrFmt(buf, _countof(buf), _T("Object: Addr: %p, Name: \"%s\"\n"), data.pObject, data.szName);
   OnOutput(buf);
 }
 
-void StackWalkerDemo::OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) STKWLK_NOEXCEPT
+void StackWalkerDemo::OnDbgHelpErr(const TDbgHelpErr & data) STKWLK_NOEXCEPT
 {
   TCHAR buf[STACKWALK_MAX_NAMELEN];
   MyTStrFmt(buf, _countof(buf), _T("ERROR: %s, GetLastError: %d (Address: %p)\n"),
-            szFuncName, gle, (LPVOID)addr);
+            data.szFuncName, data.gle, (LPVOID)data.addr);
   OnOutput(buf);
 }
 
