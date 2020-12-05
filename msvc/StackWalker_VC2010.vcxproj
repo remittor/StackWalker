@@ -227,6 +227,11 @@
     <CodeAnalysisRules Condition="'$(Configuration)|$(Platform)'=='Release_VC2010|x64'" />
     <CodeAnalysisRuleAssemblies Condition="'$(Configuration)|$(Platform)'=='Release_VC2010|x64'" />
   </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>..\src</AdditionalIncludeDirectories>
+    </ClCompile>  
+  </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug_VC2010|Win32'">
     <ClCompile>
       <Optimization>Disabled</Optimization>
@@ -504,11 +509,11 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp" />
-    <ClCompile Include="StackWalker.cpp" />
+    <ClCompile Include="..\test\main.cpp" />
+    <ClCompile Include="..\src\StackWalker.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="StackWalker.h" />
+    <ClInclude Include="..\src\StackWalker.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

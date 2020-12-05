@@ -25,7 +25,7 @@ environment:
 
 before_build:
   - if [%BUILDER%]==[msbuild] echo MSVC2008
-  - if [%BUILDER%]==[msbuild] set "SLN_NAME=Main\StackWalker\StackWalker_VC9.sln"
+  - if [%BUILDER%]==[msbuild] set "SLN_NAME=msvc\StackWalker_VC9.sln"
   - if [%BUILDER%]==[msbuild] set "MS_BLD_TOOLSET=v90"
   - if [%BUILDER%]==[msbuild] set "MS_VS_DIR=C:\Program Files (x86)\Microsoft Visual Studio 9.0"
   - if [%BUILDER%]==[msbuild] set "MS_BLD_DIR=C:\Windows\Microsoft.NET\Framework\v3.5"

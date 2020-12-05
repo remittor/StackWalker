@@ -84,15 +84,15 @@ LINK32=link.exe
 # Name "StackWalker_VC5 - Win32 Debug"
 # Begin Source File
 
-SOURCE=.\main.cpp
+SOURCE=..\test\main.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=.\StackWalker.cpp
+SOURCE=..\src\StackWalker.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=.\StackWalker.h
+SOURCE=..\src\StackWalker.h
 # End Source File
 # End Target
 # End Project

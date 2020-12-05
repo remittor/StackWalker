@@ -77,9 +77,9 @@ message(STATUS "CMAKE_INSTALL_BINDIR: ${CMAKE_INSTALL_BINDIR}")
 
 set(TARGET_StackWalker StackWalker)
 add_library(${TARGET_StackWalker} STATIC
-    Main/StackWalker/StackWalker.cpp)
+    src/StackWalker.cpp)
 target_include_directories(${TARGET_StackWalker} PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/Main/StackWalker>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
     )
 
 install(TARGETS "${TARGET_StackWalker}"
@@ -88,7 +88,7 @@ install(TARGETS "${TARGET_StackWalker}"
     RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
 
-install(FILES "${CMAKE_SOURCE_DIR}/Main/StackWalker/StackWalker.h"
+install(FILES "${CMAKE_SOURCE_DIR}/src/StackWalker.h"
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 if (MSVC_VERSION GREATER_EQUAL 1900)
@@ -110,7 +110,7 @@ else()
 
     set(TARGET_StackWalker_tests StackWalker_test)
     add_executable(${TARGET_StackWalker_tests}
-        Main/StackWalker/main.cpp)
+        test/main.cpp)
     target_link_libraries(${TARGET_StackWalker_tests} PUBLIC ${TARGET_StackWalker})
 
     add_test(NAME ${TARGET_StackWalker_tests} COMMAND ${TARGET_StackWalker_tests})
