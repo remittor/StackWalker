@@ -114,6 +114,20 @@
 #include <dbghelp.h>
 #pragma pack(pop)
 
+// max name length for found symbols
+#ifndef STKWLK_MAX_NAME_LEN
+#define STKWLK_MAX_NAME_LEN  (MAX_SYM_NAME + 48)
+#else
+#if STKWLK_MAX_NAME_LEN < 128 || STKWLK_MAX_NAME_LEN > 35000
+#error "Incorrect max size of names"
+#endif
+#endif
+
+#ifdef STACKWALK_MAX_NAMELEN
+#undef STACKWALK_MAX_NAMELEN
+#endif
+#define STACKWALK_MAX_NAMELEN  STKWLK_MAX_NAME_LEN
+
 #ifdef StackWalk
 #undef StackWalk
 #endif
@@ -347,7 +361,7 @@ public:
 
   BOOL Init(LPCTSTR szSymPath) STKWLK_NOEXCEPT
   {
-    TCHAR buf[StackWalkerBase::STACKWALK_MAX_NAMELEN];
+    TCHAR buf[STACKWALK_MAX_NAMELEN];
 
     if (m_parent == NULL)
       return FALSE;
@@ -625,7 +639,7 @@ public:
       IMAGEHLP_SYMBOL64 baseinf;
       T_SYMBOL_INFO     fullinf;
     };
-    TCHAR _buffer[StackWalkerBase::STACKWALK_MAX_NAMELEN];
+    TCHAR _buffer[STACKWALK_MAX_NAMELEN];
     TCHAR _padding[16];
     enum { Empty, Base, Full } tag;   // header type
   } T_SW_SYM_INFO;
