@@ -296,7 +296,7 @@ static HMODULE LoadDbgHelpLib(bool prefixIsDir, LPCWSTR prefix, LPCWSTR path) ST
 class StackWalkerInternal
 {
 public:
-  StackWalkerInternal(StackWalker* parent, HANDLE hProcess, PCONTEXT ctx) STKWLK_NOEXCEPT
+  StackWalkerInternal(StackWalkerBase * parent, HANDLE hProcess, PCONTEXT ctx) STKWLK_NOEXCEPT
   {
     m_parent = parent;
     m_hDbhHelp = NULL;
@@ -329,7 +329,7 @@ public:
 
   BOOL Init(LPCTSTR szSymPath) STKWLK_NOEXCEPT
   {
-    TCHAR buf[StackWalker::STACKWALK_MAX_NAMELEN];
+    TCHAR buf[StackWalkerBase::STACKWALK_MAX_NAMELEN];
 
     if (m_parent == NULL)
       return FALSE;
@@ -467,7 +467,7 @@ public:
     return TRUE;
   }
 
-  StackWalker* m_parent;
+  StackWalkerBase * m_parent;
 
   CONTEXT m_ctx;
   HMODULE m_hDbhHelp;
@@ -602,7 +602,7 @@ public:
       IMAGEHLP_SYMBOL64 baseinf;
       T_SYMBOL_INFO     fullinf;
     };
-    TCHAR _buffer[StackWalker::STACKWALK_MAX_NAMELEN];
+    TCHAR _buffer[StackWalkerBase::STACKWALK_MAX_NAMELEN];
     TCHAR _padding[16];
     enum { Empty, Base, Full } tag;   // header type
   } T_SW_SYM_INFO;
@@ -820,7 +820,7 @@ private:
     }
     {
       // try to retrieve the file-version:
-      if ((this->m_parent->m_options & StackWalker::RetrieveFileVersion) != 0)
+      if ((this->m_parent->m_options & StackWalkerBase::RetrieveFileVersion) != 0)
       {
         GetFileVersion(img, fileVersion);
       }
@@ -984,8 +984,8 @@ static PCONTEXT get_current_exception_context() STKWLK_NOEXCEPT
   return pctx ? *pctx : NULL;
 }
 
-bool StackWalker::Init(ExceptType extype, int options, LPCTSTR szSymPath, DWORD dwProcessId,
-                       HANDLE hProcess, PEXCEPTION_POINTERS exp) STKWLK_NOEXCEPT
+bool StackWalkerBase::Init(ExceptType extype, int options, LPCTSTR szSymPath, DWORD dwProcessId,
+                           HANDLE hProcess, PEXCEPTION_POINTERS exp) STKWLK_NOEXCEPT
 {
   PCONTEXT ctx = NULL;
   if (extype == AfterCatch)
@@ -1009,22 +1009,22 @@ bool StackWalker::Init(ExceptType extype, int options, LPCTSTR szSymPath, DWORD 
   return true;
 }
 
-StackWalker::StackWalker(DWORD dwProcessId, HANDLE hProcess) STKWLK_NOEXCEPT
+StackWalkerBase::StackWalkerBase(DWORD dwProcessId, HANDLE hProcess) STKWLK_NOEXCEPT
 {
   Init(NonExcept, OptionsAll, NULL, dwProcessId, hProcess);
 }
 
-StackWalker::StackWalker(int options, LPCTSTR szSymPath, DWORD dwProcessId, HANDLE hProcess) STKWLK_NOEXCEPT
+StackWalkerBase::StackWalkerBase(int options, LPCTSTR szSymPath, DWORD dwProcessId, HANDLE hProcess) STKWLK_NOEXCEPT
 {
   Init(NonExcept, options, szSymPath, dwProcessId, hProcess);
 }
 
-StackWalker::StackWalker(ExceptType extype, int options, PEXCEPTION_POINTERS exp) STKWLK_NOEXCEPT
+StackWalkerBase::StackWalkerBase(ExceptType extype, int options, PEXCEPTION_POINTERS exp) STKWLK_NOEXCEPT
 {
   Init(extype, options, NULL, GetCurrentProcessId(), GetCurrentProcess(), exp);
 }
 
-StackWalker::~StackWalker() STKWLK_NOEXCEPT
+StackWalkerBase::~StackWalkerBase() STKWLK_NOEXCEPT
 {
   if (m_sw != NULL) {
     m_sw->~StackWalkerInternal();  // call the object's destructor
@@ -1035,7 +1035,7 @@ StackWalker::~StackWalker() STKWLK_NOEXCEPT
   SetDbgHelpPath(NULL);
 }
 
-bool StackWalker::SetSymPath(LPCTSTR szSymPath) STKWLK_NOEXCEPT
+bool StackWalkerBase::SetSymPath(LPCTSTR szSymPath) STKWLK_NOEXCEPT
 {
   if (m_szSymPath)
     free(m_szSymPath);
@@ -1048,7 +1048,7 @@ bool StackWalker::SetSymPath(LPCTSTR szSymPath) STKWLK_NOEXCEPT
   return m_szSymPath ? true : false;
 }
 
-bool StackWalker::SetDbgHelpPath(LPCWSTR szDllPath) STKWLK_NOEXCEPT
+bool StackWalkerBase::SetDbgHelpPath(LPCWSTR szDllPath) STKWLK_NOEXCEPT
 {
   if (m_szDbgHelpPath)
     free((LPVOID)m_szDbgHelpPath);
@@ -1059,7 +1059,7 @@ bool StackWalker::SetDbgHelpPath(LPCWSTR szDllPath) STKWLK_NOEXCEPT
   return m_szDbgHelpPath ? true : false;
 }
 
-bool StackWalker::SetTargetProcess(DWORD dwProcessId, HANDLE hProcess) STKWLK_NOEXCEPT
+bool StackWalkerBase::SetTargetProcess(DWORD dwProcessId, HANDLE hProcess) STKWLK_NOEXCEPT
 {
   m_dwProcessId = dwProcessId;
   m_hProcess = hProcess;
@@ -1068,12 +1068,12 @@ bool StackWalker::SetTargetProcess(DWORD dwProcessId, HANDLE hProcess) STKWLK_NO
   return true;
 }
 
-PCONTEXT StackWalker::GetCurrentExceptionContext() STKWLK_NOEXCEPT
+PCONTEXT StackWalkerBase::GetCurrentExceptionContext() STKWLK_NOEXCEPT
 {
   return get_current_exception_context();
 }
 
-BOOL StackWalker::LoadModules() STKWLK_NOEXCEPT
+BOOL StackWalkerBase::LoadModules() STKWLK_NOEXCEPT
 {
   if (this->m_sw == NULL)
   {
@@ -1194,10 +1194,10 @@ BOOL StackWalker::LoadModules() STKWLK_NOEXCEPT
 // This has to be done due to a problem with the "hProcess"-parameter in x64...
 // Because this class is in no case multi-threading-enabled (because of the limitations
 // of dbghelp.dll) it is "safe" to use a static-variable
-static StackWalker::PReadProcessMemoryRoutine s_readMemoryFunction = NULL;
+static StackWalkerBase::PReadProcessMemoryRoutine s_readMemoryFunction = NULL;
 static LPVOID                                 s_readMemoryFunction_UserData = NULL;
 
-BOOL StackWalker::ShowCallstack(HANDLE                    hThread,
+BOOL StackWalkerBase::ShowCallstack(HANDLE                    hThread,
                                 const CONTEXT*            context,
                                 PReadProcessMemoryRoutine readMemoryFunction,
                                 LPVOID                    pUserData) STKWLK_NOEXCEPT
@@ -1458,12 +1458,12 @@ BOOL StackWalker::ShowCallstack(HANDLE                    hThread,
   return TRUE;
 }
 
-BOOL StackWalker::ShowCallstack(const CONTEXT * context) STKWLK_NOEXCEPT
+BOOL StackWalkerBase::ShowCallstack(const CONTEXT * context) STKWLK_NOEXCEPT
 {
   return ShowCallstack(GetCurrentThread(), context, NULL, NULL);
 }
 
-BOOL StackWalker::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
+BOOL StackWalkerBase::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
 {
   if (this->m_sw == NULL)
   {
@@ -1501,11 +1501,11 @@ BOOL StackWalker::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
   return TRUE;
 };
 
-BOOL __stdcall StackWalker::myReadProcMem(HANDLE  hProcess,
-                                          DWORD64 qwBaseAddress,
-                                          PVOID   lpBuffer,
-                                          DWORD   nSize,
-                                          LPDWORD lpNumberOfBytesRead) STKWLK_NOEXCEPT
+BOOL WINAPI StackWalkerBase::myReadProcMem(HANDLE  hProcess,
+                                           DWORD64 qwBaseAddress,
+                                           PVOID   lpBuffer,
+                                           DWORD   nSize,
+                                           LPDWORD lpNumberOfBytesRead) STKWLK_NOEXCEPT
 {
   if (s_readMemoryFunction == NULL)
   {
@@ -1522,7 +1522,7 @@ BOOL __stdcall StackWalker::myReadProcMem(HANDLE  hProcess,
   }
 }
 
-void StackWalker::OnLoadModule(LPCTSTR   img,
+void StackWalkerBase::OnLoadModule(LPCTSTR   img,
                                LPCTSTR   mod,
                                DWORD64   baseAddr,
                                DWORD     size,
@@ -1554,7 +1554,7 @@ void StackWalker::OnLoadModule(LPCTSTR   img,
   OnOutput(buffer);
 }
 
-void StackWalker::OnCallstackEntry(CallstackEntryType eType, CallstackEntry& entry) STKWLK_NOEXCEPT
+void StackWalkerBase::OnCallstackEntry(CallstackEntryType eType, CallstackEntry& entry) STKWLK_NOEXCEPT
 {
   TCHAR  buffer[STACKWALK_MAX_NAMELEN];
   size_t maxLen = STACKWALK_MAX_NAMELEN;
@@ -1585,7 +1585,7 @@ void StackWalker::OnCallstackEntry(CallstackEntryType eType, CallstackEntry& ent
   }
 }
 
-void StackWalker::OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) STKWLK_NOEXCEPT
+void StackWalkerBase::OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) STKWLK_NOEXCEPT
 {
   TCHAR  buffer[STACKWALK_MAX_NAMELEN];
   size_t maxLen = STACKWALK_MAX_NAMELEN;
@@ -1598,7 +1598,7 @@ void StackWalker::OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) STKW
   OnOutput(buffer);
 }
 
-void StackWalker::OnLoadDbgHelp(ULONGLONG verFile, LPCTSTR szDllPath) STKWLK_NOEXCEPT
+void StackWalkerBase::OnLoadDbgHelp(ULONGLONG verFile, LPCTSTR szDllPath) STKWLK_NOEXCEPT
 {
   TCHAR  buffer[STACKWALK_MAX_NAMELEN];
   size_t maxLen = _countof(buffer);
@@ -1615,7 +1615,7 @@ void StackWalker::OnLoadDbgHelp(ULONGLONG verFile, LPCTSTR szDllPath) STKWLK_NOE
   OnOutput(buffer);
 }
 
-void StackWalker::OnSymInit(LPCTSTR szSearchPath, DWORD symOptions, LPCTSTR szUserName) STKWLK_NOEXCEPT
+void StackWalkerBase::OnSymInit(LPCTSTR szSearchPath, DWORD symOptions, LPCTSTR szUserName) STKWLK_NOEXCEPT
 {
   TCHAR  buffer[STACKWALK_MAX_NAMELEN];
   size_t maxLen = STACKWALK_MAX_NAMELEN;
@@ -1651,7 +1651,7 @@ void StackWalker::OnSymInit(LPCTSTR szSearchPath, DWORD symOptions, LPCTSTR szUs
 #endif
 }
 
-void StackWalker::OnOutput(LPCTSTR buffer) STKWLK_NOEXCEPT
+void StackWalkerBase::OnOutput(LPCTSTR buffer) STKWLK_NOEXCEPT
 {
   OutputDebugString(buffer);
 }

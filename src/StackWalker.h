@@ -81,7 +81,7 @@ typedef unsigned long SIZE_T, *PSIZE_T;
 
 class StackWalkerInternal; // forward
 
-class StackWalker
+class StackWalkerBase
 {
 public:
   typedef enum ExceptType
@@ -125,25 +125,25 @@ public:
     OptionsAll = 0x3F
   } StackWalkOptions;
 
-  StackWalker(ExceptType extype, int options = OptionsAll, PEXCEPTION_POINTERS exp = NULL) STKWLK_NOEXCEPT;
+  StackWalkerBase(ExceptType extype, int options = OptionsAll, PEXCEPTION_POINTERS exp = NULL) STKWLK_NOEXCEPT;
 
-  StackWalker(int     options = OptionsAll, // 'int' is by design, to combine the enum-flags
-              LPCTSTR szSymPath = NULL,
-              DWORD   dwProcessId = GetCurrentProcessId(),
-              HANDLE  hProcess = GetCurrentProcess()) STKWLK_NOEXCEPT;
+  StackWalkerBase(int     options = OptionsAll, // 'int' is by design, to combine the enum-flags
+                  LPCTSTR szSymPath = NULL,
+                  DWORD   dwProcessId = GetCurrentProcessId(),
+                  HANDLE  hProcess = GetCurrentProcess()) STKWLK_NOEXCEPT;
 
-  StackWalker(DWORD dwProcessId, HANDLE hProcess) STKWLK_NOEXCEPT;
+  StackWalkerBase(DWORD dwProcessId, HANDLE hProcess) STKWLK_NOEXCEPT;
 
   // delete copy constructor
-  StackWalker(const StackWalker & ) STKWLK_DELETED;
-  const StackWalker & operator = ( const StackWalker & ) STKWLK_DELETED;
+  StackWalkerBase(const StackWalkerBase & ) STKWLK_DELETED;
+  const StackWalkerBase & operator = ( const StackWalkerBase & ) STKWLK_DELETED;
 #if _MSC_VER >= 1800
   // delete move constructor
-  StackWalker(StackWalker &&) STKWLK_DELETED;
-  StackWalker & operator = ( StackWalker && ) STKWLK_DELETED;
+  StackWalkerBase(StackWalkerBase &&) STKWLK_DELETED;
+  StackWalkerBase & operator = (StackWalkerBase && ) STKWLK_DELETED;
 #endif
 
-  virtual ~StackWalker() STKWLK_NOEXCEPT;
+  virtual ~StackWalkerBase() STKWLK_NOEXCEPT;
 
   bool SetSymPath(LPCTSTR szSymPath) STKWLK_NOEXCEPT;
   
@@ -265,8 +265,10 @@ private:
   virtual void OnOutput(LPCTSTR) STKWLK_PROTECT_VM;
 #undef  LPCTSTR
 #undef  LPTSTR
-}; // class StackWalker
+}; // class StackWalkerBase
 
+
+typedef StackWalkerBase  StackWalker;
 
 #endif //defined(_MSC_VER)
 
