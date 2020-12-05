@@ -125,7 +125,9 @@ public:
     OptionsAll = 0x3F
   } StackWalkOptions;
 
-  StackWalkerBase(ExceptType extype, int options = OptionsAll, PEXCEPTION_POINTERS exp = NULL) STKWLK_NOEXCEPT;
+  StackWalkerBase(ExceptType extype,
+                  int options = OptionsAll,
+                  PEXCEPTION_POINTERS exp = NULL) STKWLK_NOEXCEPT;
 
   StackWalkerBase(int     options = OptionsAll, // 'int' is by design, to combine the enum-flags
                   LPCTSTR szSymPath = NULL,
@@ -216,8 +218,8 @@ protected:
     lastEntry
   } CallstackEntryType;
 
-  virtual void OnLoadDbgHelp(ULONGLONG verFile, LPCTSTR szDllPath) STKWLK_NOEXCEPT;
-  virtual void OnSymInit(LPCTSTR szSearchPath, DWORD symOptions, LPCTSTR szUserName) STKWLK_NOEXCEPT;
+  virtual void OnLoadDbgHelp(ULONGLONG verFile, LPCTSTR szDllPath) STKWLK_NOEXCEPT = 0;
+  virtual void OnSymInit(LPCTSTR szSearchPath, DWORD symOptions, LPCTSTR szUserName) STKWLK_NOEXCEPT = 0;
   virtual void OnLoadModule(LPCTSTR   img,
                             LPCTSTR   mod,
                             DWORD64   baseAddr,
@@ -225,10 +227,10 @@ protected:
                             DWORD     result,
                             LPCTSTR   symType,
                             LPCTSTR   pdbName,
-                            ULONGLONG fileVersion) STKWLK_NOEXCEPT;
-  virtual void OnCallstackEntry(CallstackEntryType eType, CallstackEntry& entry) STKWLK_NOEXCEPT;
-  virtual void OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) STKWLK_NOEXCEPT;
-  virtual void OnOutput(LPCTSTR szText) STKWLK_NOEXCEPT;
+                            ULONGLONG fileVersion) STKWLK_NOEXCEPT = 0;
+  virtual void OnCallstackEntry(CallstackEntryType eType, CallstackEntry& entry) STKWLK_NOEXCEPT = 0;
+  virtual void OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) STKWLK_NOEXCEPT = 0;
+  virtual void OnOutput(LPCTSTR szText) STKWLK_NOEXCEPT = 0;
 
   StackWalkerInternal* m_sw;
   HANDLE               m_hProcess;
@@ -268,7 +270,47 @@ private:
 }; // class StackWalkerBase
 
 
-typedef StackWalkerBase  StackWalker;
+class StackWalkerDemo : public StackWalkerBase
+{
+public:  
+  StackWalkerDemo(ExceptType extype,
+                  int options = OptionsAll,
+                  PEXCEPTION_POINTERS exp = NULL) STKWLK_NOEXCEPT
+    : StackWalkerBase(extype, options, exp)
+  { }
+
+  StackWalkerDemo(int     options = OptionsAll, // 'int' is by design, to combine the enum-flags
+                  LPCTSTR szSymPath = NULL,
+                  DWORD   dwProcessId = GetCurrentProcessId(),
+                  HANDLE  hProcess = GetCurrentProcess()) STKWLK_NOEXCEPT
+    : StackWalkerBase(options, szSymPath, dwProcessId, hProcess)
+  { }
+
+  StackWalkerDemo(DWORD dwProcessId, HANDLE hProcess) STKWLK_NOEXCEPT
+    : StackWalkerBase(dwProcessId, hProcess)
+  { }
+
+  virtual void OnLoadDbgHelp(ULONGLONG verFile, LPCTSTR szDllPath) STKWLK_NOEXCEPT;
+
+  virtual void OnSymInit(LPCTSTR szSearchPath, DWORD symOptions, LPCTSTR szUserName) STKWLK_NOEXCEPT;
+
+  virtual void OnLoadModule(LPCTSTR   img,
+                            LPCTSTR   mod,
+                            DWORD64   baseAddr,
+                            DWORD     size,
+                            DWORD     result,
+                            LPCTSTR   symType,
+                            LPCTSTR   pdbName,
+                            ULONGLONG fileVersion) STKWLK_NOEXCEPT;
+
+  virtual void OnCallstackEntry(CallstackEntryType eType, CallstackEntry & entry) STKWLK_NOEXCEPT;
+
+  virtual void OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) STKWLK_NOEXCEPT;
+
+  virtual void OnOutput(LPCTSTR szText) STKWLK_NOEXCEPT;
+
+}; // class StackWalkerDemo
+
 
 #endif //defined(_MSC_VER)
 

@@ -30,10 +30,10 @@ void (*pGlobalFuncPtr)() = 0;
 
 // Specialized stackwalker-output classes
 // Console (printf):
-class StackWalkerToConsole : public StackWalker
+class StackWalkerToConsole : public StackWalkerDemo
 {
 public:
-  StackWalkerToConsole() : StackWalker(StackWalker::RetrieveVerbose | StackWalker::SymBuildPath)
+  StackWalkerToConsole() : StackWalkerDemo(StackWalkerBase::RetrieveVerbose | StackWalkerBase::SymBuildPath)
   { 
     // nothing
   }

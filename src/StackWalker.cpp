@@ -1522,7 +1522,9 @@ BOOL WINAPI StackWalkerBase::myReadProcMem(HANDLE  hProcess,
   }
 }
 
-void StackWalkerBase::OnLoadModule(LPCTSTR   img,
+// =====================================================================================
+
+void StackWalkerDemo::OnLoadModule(LPCTSTR   img,
                                LPCTSTR   mod,
                                DWORD64   baseAddr,
                                DWORD     size,
@@ -1554,7 +1556,7 @@ void StackWalkerBase::OnLoadModule(LPCTSTR   img,
   OnOutput(buffer);
 }
 
-void StackWalkerBase::OnCallstackEntry(CallstackEntryType eType, CallstackEntry& entry) STKWLK_NOEXCEPT
+void StackWalkerDemo::OnCallstackEntry(CallstackEntryType eType, CallstackEntry& entry) STKWLK_NOEXCEPT
 {
   TCHAR  buffer[STACKWALK_MAX_NAMELEN];
   size_t maxLen = STACKWALK_MAX_NAMELEN;
@@ -1585,7 +1587,7 @@ void StackWalkerBase::OnCallstackEntry(CallstackEntryType eType, CallstackEntry&
   }
 }
 
-void StackWalkerBase::OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) STKWLK_NOEXCEPT
+void StackWalkerDemo::OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) STKWLK_NOEXCEPT
 {
   TCHAR  buffer[STACKWALK_MAX_NAMELEN];
   size_t maxLen = STACKWALK_MAX_NAMELEN;
@@ -1598,7 +1600,7 @@ void StackWalkerBase::OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) 
   OnOutput(buffer);
 }
 
-void StackWalkerBase::OnLoadDbgHelp(ULONGLONG verFile, LPCTSTR szDllPath) STKWLK_NOEXCEPT
+void StackWalkerDemo::OnLoadDbgHelp(ULONGLONG verFile, LPCTSTR szDllPath) STKWLK_NOEXCEPT
 {
   TCHAR  buffer[STACKWALK_MAX_NAMELEN];
   size_t maxLen = _countof(buffer);
@@ -1615,7 +1617,7 @@ void StackWalkerBase::OnLoadDbgHelp(ULONGLONG verFile, LPCTSTR szDllPath) STKWLK
   OnOutput(buffer);
 }
 
-void StackWalkerBase::OnSymInit(LPCTSTR szSearchPath, DWORD symOptions, LPCTSTR szUserName) STKWLK_NOEXCEPT
+void StackWalkerDemo::OnSymInit(LPCTSTR szSearchPath, DWORD symOptions, LPCTSTR szUserName) STKWLK_NOEXCEPT
 {
   TCHAR  buffer[STACKWALK_MAX_NAMELEN];
   size_t maxLen = STACKWALK_MAX_NAMELEN;
@@ -1651,7 +1653,7 @@ void StackWalkerBase::OnSymInit(LPCTSTR szSearchPath, DWORD symOptions, LPCTSTR 
 #endif
 }
 
-void StackWalkerBase::OnOutput(LPCTSTR buffer) STKWLK_NOEXCEPT
+void StackWalkerDemo::OnOutput(LPCTSTR buffer) STKWLK_NOEXCEPT
 {
   OutputDebugString(buffer);
 }
