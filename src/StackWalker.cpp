@@ -1239,10 +1239,24 @@ BOOL StackWalker::ShowCallstack(HANDLE                    hThread,
     if (GetThreadId(hThread) == GetCurrentThreadId())
 #endif
     {
+      memset(&c, 0, sizeof(c));
       if (m_sw->m_ctx.ContextFlags != 0)
         c = m_sw->m_ctx;   // context taken at Init
       else
-        GET_CURRENT_CONTEXT_STACKWALKER_CODEPLEX(c, STKWLK_CONTEXT_FLAGS);
+      {
+        c.ContextFlags = STKWLK_CONTEXT_FLAGS;
+#if defined(_M_IX86)
+        // The following should be enough for walking the callstack...
+        __asm    call x
+        __asm x: pop eax
+        __asm    mov c.Eip, eax
+        __asm    mov c.Ebp, ebp
+        __asm    mov c.Esp, esp
+#else
+        // The following is defined for x86 (XP and higher), x64 and IA64
+        RtlCaptureContext(&c);
+#endif
+      }
     }
     else
     {
