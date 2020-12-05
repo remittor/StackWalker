@@ -88,6 +88,7 @@
 #include <stdlib.h>
 #include <windows.h>
 #include <errno.h>
+#include <stdarg.h>
 #include <new>
 
 #pragma comment(lib, "version.lib") // for "VerQueryValue"
@@ -230,6 +231,23 @@ static errno_t MyStrCat(LPWSTR szDest, size_t nMaxDestSize, LPCWSTR szSrc) STKWL
   errno_t rc = wcsncat_s(szDest, nMaxDestSize, szSrc, _TRUNCATE);
   szDest[nMaxDestSize - 1] = 0;
   return rc;
+}
+
+static errno_t MyTStrFmt(LPTSTR dst, size_t dstcap, LPCTSTR fmt, ...) STKWLK_NOEXCEPT
+{
+  if (dst == NULL || dstcap < 2 || fmt == NULL)
+    return EINVAL;
+  memset(dst, 0, dstcap * sizeof(TCHAR));
+  va_list argptr;
+  va_start(argptr, fmt);
+#if _MSC_VER >= 1400
+  _vsntprintf_s(dst, dstcap, _TRUNCATE, fmt, argptr);
+#else
+  _vsntprintf(dst, dstcap, fmt, argptr);
+#endif
+  va_end(argptr);
+  dst[dstcap - 1] = 0;
+  return 0;
 }
 
 static LPVOID GetProcAddrEx(int & counter, HMODULE hLib, LPCSTR name, LPVOID * ptr = NULL) STKWLK_NOEXCEPT
@@ -1487,16 +1505,17 @@ BOOL StackWalkerBase::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
   if (m_sw->Sym.GetSymFromAddr == NULL && m_sw->Sym.FromAddr == NULL)
     goto fin;
 
-  // Show object info (SymGetSymFromAddr64())
-  T_SW_SYM_INFO symInf;
-  DWORD64 dwAddress = (DWORD64)pObject;
-  DWORD64 dwDisplacement = 0;
-  sname = m_sw->SymFromAddr(m_hProcess, dwAddress, &dwDisplacement, symInf);
-  if (sname == NULL)
-    this->OnDbgHelpErr(_T("SymGetSymFromAddr"), GetLastError(), dwAddress);
-  else
-    result = TRUE;
-
+  {
+    // Show object info (SymGetSymFromAddr64())
+    T_SW_SYM_INFO symInf;
+    DWORD64 dwAddress = (DWORD64)pObject;
+    DWORD64 dwDisplacement = 0;
+    sname = m_sw->SymFromAddr(m_hProcess, dwAddress, &dwDisplacement, symInf);
+    if (sname == NULL)
+      this->OnDbgHelpErr(_T("SymGetSymFromAddr"), GetLastError(), dwAddress);
+    else
+      result = TRUE;
+  }
 fin:  
   // Object name output
   this->OnShowObject(pObject, sname);
@@ -1535,117 +1554,86 @@ void StackWalkerDemo::OnLoadModule(LPCTSTR   img,
                                LPCTSTR   pdbName,
                                ULONGLONG fileVersion) STKWLK_NOEXCEPT
 {
-  TCHAR  buffer[STACKWALK_MAX_NAMELEN];
-  size_t maxLen = STACKWALK_MAX_NAMELEN;
-#if _MSC_VER >= 1400
-  maxLen = _TRUNCATE;
-#endif
+  TCHAR buf[STACKWALK_MAX_NAMELEN];
   if (fileVersion == 0)
-    _sntprintf_s(buffer, maxLen, _T("%s:%s (%p), size: %d (result: %d), SymType: '%s', PDB: '%s'\n"),
-                img, mod, (LPVOID)baseAddr, size, result, symType, pdbName);
+    MyTStrFmt(buf, _countof(buf), _T("%s:%s (%p), size: %d (result: %d), SymType: '%s', PDB: '%s'\n"),
+              img, mod, (LPVOID)baseAddr, size, result, symType, pdbName);
   else
   {
     DWORD v4 = (DWORD)(fileVersion & 0xFFFF);
     DWORD v3 = (DWORD)((fileVersion >> 16) & 0xFFFF);
     DWORD v2 = (DWORD)((fileVersion >> 32) & 0xFFFF);
     DWORD v1 = (DWORD)((fileVersion >> 48) & 0xFFFF);
-    _sntprintf_s(
-        buffer, maxLen,
+    MyTStrFmt(
+        buf, _countof(buf),
         _T("%s:%s (%p), size: %d (result: %d), SymType: '%s', PDB: '%s', fileVersion: %d.%d.%d.%d\n"),
         img, mod, (LPVOID)baseAddr, size, result, symType, pdbName, v1, v2, v3, v4);
   }
-  buffer[STACKWALK_MAX_NAMELEN - 1] = 0; // be sure it is NULL terminated
-  OnOutput(buffer);
+  OnOutput(buf);
 }
 
 void StackWalkerDemo::OnCallstackEntry(CallstackEntryType eType, CallstackEntry& entry) STKWLK_NOEXCEPT
 {
-  TCHAR  buffer[STACKWALK_MAX_NAMELEN];
-  size_t maxLen = STACKWALK_MAX_NAMELEN;
-#if _MSC_VER >= 1400
-  maxLen = _TRUNCATE;
-#endif
+  TCHAR buf[STACKWALK_MAX_NAMELEN];
   if ((eType != lastEntry) && (entry.offset != 0))
   {
     if (entry.name[0] == 0)
-      MyStrCpy(entry.name, STACKWALK_MAX_NAMELEN, _T("(function-name not available)"));
+      MyStrCpy(entry.name, _countof(entry.name), _T("(function-name not available)"));
     if (entry.undName[0] != 0)
-      MyStrCpy(entry.name, STACKWALK_MAX_NAMELEN, entry.undName);
+      MyStrCpy(entry.name, _countof(entry.name), entry.undName);
     if (entry.undFullName[0] != 0)
-      MyStrCpy(entry.name, STACKWALK_MAX_NAMELEN, entry.undFullName);
+      MyStrCpy(entry.name, _countof(entry.name), entry.undFullName);
     if (entry.lineFileName[0] == 0)
     {
-      MyStrCpy(entry.lineFileName, STACKWALK_MAX_NAMELEN, _T("(filename not available)"));
+      MyStrCpy(entry.lineFileName, _countof(entry.lineFileName), _T("(filename not available)"));
       if (entry.moduleName[0] == 0)
-        MyStrCpy(entry.moduleName, STACKWALK_MAX_NAMELEN, _T("(module-name not available)"));
-      _sntprintf_s(buffer, maxLen, _T("%p (%s): %s: %s\n"), (LPVOID)entry.offset, entry.moduleName,
-                  entry.lineFileName, entry.name);
+        MyStrCpy(entry.moduleName, _countof(entry.moduleName), _T("(module-name not available)"));
+      MyTStrFmt(buf, _countof(buf), _T("%p (%s): %s: %s\n"),
+                (LPVOID)entry.offset, entry.moduleName, entry.lineFileName, entry.name);
     }
     else
-      _sntprintf_s(buffer, maxLen, _T("%s (%d): %s\n"), entry.lineFileName, entry.lineNumber,
-                  entry.name);
-    buffer[STACKWALK_MAX_NAMELEN - 1] = 0;
-    OnOutput(buffer);
+      MyTStrFmt(buf, _countof(buf), _T("%s (%d): %s\n"),
+                entry.lineFileName, entry.lineNumber, entry.name);
+    OnOutput(buf);
   }
 }
 
 void StackWalkerDemo::OnShowObject(LPVOID pObject, LPCTSTR szName) STKWLK_NOEXCEPT
 {
-  TCHAR  buffer[STACKWALK_MAX_NAMELEN];
-  size_t maxLen = _countof(buffer);
-#if _MSC_VER >= 1400
-  maxLen = _TRUNCATE;
-#endif
-  _sntprintf_s(buffer, maxLen, _T("Object: Addr: %p, Name: \"%s\"\n"), pObject, szName);
-  buffer[_countof(buffer) - 1] = 0;
-  OnOutput(buffer);
+  TCHAR buf[STACKWALK_MAX_NAMELEN];
+  MyTStrFmt(buf, _countof(buf), _T("Object: Addr: %p, Name: \"%s\"\n"), pObject, szName);
+  OnOutput(buf);
 }
 
 void StackWalkerDemo::OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64 addr) STKWLK_NOEXCEPT
 {
-  TCHAR  buffer[STACKWALK_MAX_NAMELEN];
-  size_t maxLen = STACKWALK_MAX_NAMELEN;
-#if _MSC_VER >= 1400
-  maxLen = _TRUNCATE;
-#endif
-  _sntprintf_s(buffer, maxLen, _T("ERROR: %s, GetLastError: %d (Address: %p)\n"), szFuncName, gle,
-              (LPVOID)addr);
-  buffer[STACKWALK_MAX_NAMELEN - 1] = 0;
-  OnOutput(buffer);
+  TCHAR buf[STACKWALK_MAX_NAMELEN];
+  MyTStrFmt(buf, _countof(buf), _T("ERROR: %s, GetLastError: %d (Address: %p)\n"),
+            szFuncName, gle, (LPVOID)addr);
+  OnOutput(buf);
 }
 
 void StackWalkerDemo::OnLoadDbgHelp(ULONGLONG verFile, LPCTSTR szDllPath) STKWLK_NOEXCEPT
 {
-  TCHAR  buffer[STACKWALK_MAX_NAMELEN];
-  size_t maxLen = _countof(buffer);
-#if _MSC_VER >= 1400
-  maxLen = _TRUNCATE;
-#endif
+  TCHAR buf[STACKWALK_MAX_NAMELEN];
   DWORD v4 = (DWORD)(verFile & 0xFFFF);
   DWORD v3 = (DWORD)((verFile >> 16) & 0xFFFF);
   DWORD v2 = (DWORD)((verFile >> 32) & 0xFFFF);
   DWORD v1 = (DWORD)((verFile >> 48) & 0xFFFF);
-  _sntprintf_s(buffer, maxLen, _T("LoadDbgHelp: FileVer: %d.%d.%d.%d, Path: \"%s\"\n"),
-               v1, v2, v3, v4, szDllPath);
-  buffer[_countof(buffer) - 1] = 0;
-  OnOutput(buffer);
+  MyTStrFmt(buf, _countof(buf), _T("LoadDbgHelp: FileVer: %d.%d.%d.%d, Path: \"%s\"\n"),
+            v1, v2, v3, v4, szDllPath);
+  OnOutput(buf);
 }
 
 void StackWalkerDemo::OnSymInit(LPCTSTR szSearchPath, DWORD symOptions, LPCTSTR szUserName) STKWLK_NOEXCEPT
 {
-  TCHAR  buffer[STACKWALK_MAX_NAMELEN];
-  size_t maxLen = STACKWALK_MAX_NAMELEN;
-#if _MSC_VER >= 1400
-  maxLen = _TRUNCATE;
-#endif
-  _sntprintf_s(buffer, maxLen, _T("SymInit: symOptions: 0x%08X, UserName: \"%s\"\n"),
-               symOptions, szUserName);
-  buffer[_countof(buffer) - 1] = 0;
-  OnOutput(buffer);
+  TCHAR buf[STACKWALK_MAX_NAMELEN];
+  MyTStrFmt(buf, _countof(buf), _T("SymInit: symOptions: 0x%08X, UserName: \"%s\"\n"),
+            symOptions, szUserName);
+  OnOutput(buf);
 
-  _sntprintf_s(buffer, maxLen, _T("Symbol-SearchPath: \"%s\"\n"), szSearchPath);
-  buffer[_countof(buffer) - 1] = 0;
-  OnOutput(buffer);
+  MyTStrFmt(buf, _countof(buf), _T("Symbol-SearchPath: \"%s\"\n"), szSearchPath);
+  OnOutput(buf);
 
   // Also display the OS-version
   OSVERSIONINFOEX ver = { 0 };
@@ -1656,11 +1644,10 @@ void StackWalkerDemo::OnSymInit(LPCTSTR szSearchPath, DWORD symOptions, LPCTSTR 
 #endif
   if (GetVersionEx((OSVERSIONINFO*)&ver) != FALSE)
   {
-    _sntprintf_s(buffer, maxLen, _T("OS-Version: %d.%d.%d (%s) 0x%04x-%d\n"),
-                 ver.dwMajorVersion, ver.dwMinorVersion, ver.dwBuildNumber, ver.szCSDVersion,
-                 ver.wSuiteMask, ver.wProductType);
-    buffer[_countof(buffer) - 1] = 0;
-    OnOutput(buffer);
+    MyTStrFmt(buf, _countof(buf), _T("OS-Version: %d.%d.%d (%s) 0x%04x-%d\n"),
+              ver.dwMajorVersion, ver.dwMinorVersion, ver.dwBuildNumber, ver.szCSDVersion,
+              ver.wSuiteMask, ver.wProductType);
+    OnOutput(buf);
   }
 #if _MSC_VER >= 1900
 #pragma warning(pop)
