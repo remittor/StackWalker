@@ -1259,13 +1259,13 @@ BOOL StackWalkerBase::LoadModules() STKWLK_NOEXCEPT
 // This has to be done due to a problem with the "hProcess"-parameter in x64...
 // Because this class is in no case multi-threading-enabled (because of the limitations
 // of dbghelp.dll) it is "safe" to use a static-variable
-static StackWalkerBase::PReadProcessMemoryRoutine s_readMemoryFunction = NULL;
-static LPVOID                                 s_readMemoryFunction_UserData = NULL;
+static StackWalkerBase::PReadMemRoutine s_readMemoryFunction = NULL;
+static LPVOID                           s_readMemoryFunction_UserData = NULL;
 
-BOOL StackWalkerBase::ShowCallstack(HANDLE                    hThread,
-                                const CONTEXT*            context,
-                                PReadProcessMemoryRoutine readMemoryFunction,
-                                LPVOID                    pUserData) STKWLK_NOEXCEPT
+BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
+                                    const CONTEXT * context,
+                                    PReadMemRoutine pReadMemFunc,
+                                    LPVOID          pUserData) STKWLK_NOEXCEPT
 {
   CONTEXT              c;
   TCallstackEntry      csEntry;
@@ -1293,7 +1293,7 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE                    hThread,
     return FALSE;
   }
 
-  s_readMemoryFunction = readMemoryFunction;
+  s_readMemoryFunction = pReadMemFunc;
   s_readMemoryFunction_UserData = pUserData;
 
   if (hThread == NULL)

@@ -160,7 +160,7 @@ private:
             HANDLE hProcess, PEXCEPTION_POINTERS exp = NULL) STKWLK_NOEXCEPT;
 
 public:
-  typedef BOOL(__stdcall* PReadProcessMemoryRoutine)(
+  typedef BOOL (WINAPI * PReadMemRoutine)(
       HANDLE  hProcess,
       DWORD64 qwBaseAddress,
       PVOID   lpBuffer,
@@ -173,12 +173,10 @@ public:
 
   BOOL ShowCallstack(const CONTEXT * context) STKWLK_NOEXCEPT;
 
-  BOOL ShowCallstack(
-      HANDLE                    hThread = GetCurrentThread(),
-      const CONTEXT*            context = NULL,
-      PReadProcessMemoryRoutine readMemoryFunction = NULL,
-      LPVOID pUserData = NULL // optional to identify some data in the 'readMemoryFunction'-callback
-  ) STKWLK_NOEXCEPT;
+  BOOL ShowCallstack(HANDLE          hThread = GetCurrentThread(),
+                     const CONTEXT * context = NULL,
+                     PReadMemRoutine pReadMemFunc = NULL,
+                     LPVOID          pUserData = NULL) STKWLK_NOEXCEPT;
 
   BOOL ShowObject(LPVOID pObject) STKWLK_NOEXCEPT;
 
