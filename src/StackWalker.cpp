@@ -914,8 +914,10 @@ private:
 
 public:
   typedef StackWalkerBase::TFileVer  TFileVer;
+  typedef StackWalkerBase::TCallstackEntry     TCallstackEntry;
+  typedef StackWalkerBase::PReadMemRoutine     PReadMemRoutine;
 
-  bool GetFileVersion(LPCTSTR filename, TFileVer & ver, VS_FIXEDFILEINFO * vinfo = NULL)
+  bool GetFileVersion(LPCTSTR filename, TFileVer & ver, VS_FIXEDFILEINFO * vinfo = NULL) STKWLK_NOEXCEPT
   {
     bool result = false;
     BYTE buffer[2048];
@@ -1010,6 +1012,11 @@ public:
     if (m_parent)
       m_parent->OnDbgHelpErr(data);
   }
+
+  BOOL ShowCallstack(HANDLE          hThread,
+                     const CONTEXT & context,
+                     PReadMemRoutine pReadMemoryFunc,
+                     LPVOID          pUserData) STKWLK_NOEXCEPT;
 };
 
 typedef StackWalkerInternal::T_SW_SYM_INFO        T_SW_SYM_INFO;
@@ -1268,15 +1275,6 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
                                     LPVOID          pUserData) STKWLK_NOEXCEPT
 {
   CONTEXT              c;
-  TCallstackEntry      csEntry;
-  TCHAR                undName[STACKWALK_MAX_NAMELEN];
-  TCHAR                undFullName[STACKWALK_MAX_NAMELEN];
-  T_SW_SYM_INFO        symInf;
-  T_IMAGEHLP_MODULE64  Module;
-  T_IMAGEHLP_LINE64    Line;
-  int                  frameNum;
-  bool                 bLastEntryCalled = true;
-  int                  curRecursionCount = 0;
   bool                 isThreadSuspended = false;
 
   if (this->m_sw == NULL)
@@ -1352,6 +1350,30 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
   else
     c = *context;
 
+  BOOL result = m_sw->ShowCallstack(hThread, c, pReadMemFunc, pUserData);
+
+  if (isThreadSuspended)
+    ResumeThread(hThread);
+
+  return result;
+}
+
+BOOL StackWalkerInternal::ShowCallstack(HANDLE          hThread,
+                                        const CONTEXT & c,
+                                        PReadMemRoutine pReadMemoryFunc,
+                                        LPVOID          pUserData) STKWLK_NOEXCEPT
+{  
+  TCallstackEntry      csEntry;
+  TCHAR                undName[STACKWALK_MAX_NAMELEN];
+  TCHAR                undFullName[STACKWALK_MAX_NAMELEN];
+  T_SW_SYM_INFO        symInf;
+  T_IMAGEHLP_MODULE64  Module;
+  T_IMAGEHLP_LINE64    Line;
+  int                  frameNum;
+  bool                 bLastEntryCalled = true;
+  int                  curRecursionCount = 0;
+  const int            maxRecursionCount = m_parent->m_MaxRecursionCount;
+
   // init STACKFRAME for first call
   STACKFRAME64 s; // in/out stackframe
   memset(&s, 0, sizeof(s));
@@ -1394,12 +1416,12 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
     // assume that either you are done, or that the stack is so hosed that the next
     // deeper frame could not be found.
     // CONTEXT need not to be supplied if imageTyp is IMAGE_FILE_MACHINE_I386!
-    BOOL rc = m_sw->Sym.StackWalk(imageType, m_hProcess, hThread, &s, &c, myReadProcMem, 
-                                  m_sw->Sym.FunctionTableAccess, m_sw->Sym.GetModuleBase, NULL);
+    BOOL rc = Sym.StackWalk(imageType, m_hProcess, hThread, &s, (PVOID)&c, StackWalkerBase::myReadProcMem, 
+                            Sym.FunctionTableAccess, Sym.GetModuleBase, NULL);
     if (rc == FALSE)
     {
       // INFO: "StackWalk64" does not set "GetLastError"...
-      this->OnDbgHelpErr(TDbgHelpErr(_T("StackWalk64"), 0, s.AddrPC.Offset));
+      this->OnDbgHelpErr(_T("StackWalk64"), 0, s.AddrPC.Offset);
       break;
     }
 
@@ -1410,9 +1432,9 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
     csEntry.offset = s.AddrPC.Offset;
     if (s.AddrPC.Offset == s.AddrReturn.Offset)
     {
-      if ((this->m_MaxRecursionCount > 0) && (curRecursionCount > m_MaxRecursionCount))
+      if ((maxRecursionCount > 0) && (curRecursionCount > maxRecursionCount))
       {
-        this->OnDbgHelpErr(TDbgHelpErr(_T("StackWalk64-Endless-Callstack!"), 0, s.AddrPC.Offset));
+        this->OnDbgHelpErr(_T("StackWalk64-Endless-Callstack!"), 0, s.AddrPC.Offset);
         break;
       }
       curRecursionCount++;
@@ -1424,24 +1446,24 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
     {
       // we seem to have a valid PC
       // show procedure info (SymGetSymFromAddr64())
-      LPCTSTR sname = m_sw->SymFromAddr(m_hProcess, s.AddrPC.Offset, &csEntry.offsetFromSymbol, symInf);
+      LPCTSTR sname = SymFromAddr(m_hProcess, s.AddrPC.Offset, &csEntry.offsetFromSymbol, symInf);
       if (sname != NULL)
       {
         csEntry.name = sname;
-        m_sw->Sym.UnDecorateName(sname, undName, _countof(undName), UNDNAME_NAME_ONLY);
+        Sym.UnDecorateName(sname, undName, _countof(undName), UNDNAME_NAME_ONLY);
         csEntry.undName = undName;
-        m_sw->Sym.UnDecorateName(sname, undFullName, _countof(undFullName), UNDNAME_COMPLETE);
+        Sym.UnDecorateName(sname, undFullName, _countof(undFullName), UNDNAME_COMPLETE);
         csEntry.undFullName = undFullName;
       }
       else
       {
-        this->OnDbgHelpErr(TDbgHelpErr(_T("SymGetSymFromAddr"), GetLastError(), s.AddrPC.Offset));
+        this->OnDbgHelpErr(_T("SymGetSymFromAddr"), GetLastError(), s.AddrPC.Offset);
       }
 
       // show line number info, NT5.0-method (SymGetLineFromAddr64())
-      if (m_sw->Sym.GetLineFromAddr != NULL)
+      if (Sym.GetLineFromAddr != NULL)
       { // yes, we have SymGetLineFromAddr64()
-        BOOL rc = m_sw->Sym.GetLineFromAddr(m_hProcess, s.AddrPC.Offset, &csEntry.offsetFromLine, &Line);
+        BOOL rc = Sym.GetLineFromAddr(m_hProcess, s.AddrPC.Offset, &csEntry.offsetFromLine, &Line);
         if (rc != FALSE)
         {
           csEntry.lineNumber = Line.LineNumber;
@@ -1449,12 +1471,12 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
         }
         else
         {
-          this->OnDbgHelpErr(TDbgHelpErr(_T("SymGetLineFromAddr64"), GetLastError(), s.AddrPC.Offset));
+          this->OnDbgHelpErr(_T("SymGetLineFromAddr64"), GetLastError(), s.AddrPC.Offset);
         }
       } // yes, we have SymGetLineFromAddr64()
 
       // show module info (SymGetModuleInfo64())
-      if (this->m_sw->GetModuleInfo(this->m_hProcess, s.AddrPC.Offset, Module) != FALSE)
+      if (this->GetModuleInfo(this->m_hProcess, s.AddrPC.Offset, Module) != FALSE)
       { // got module info OK
         switch (Module.SymType)
         {
@@ -1499,30 +1521,27 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
       } // got module info OK
       else
       {
-        this->OnDbgHelpErr(TDbgHelpErr(_T("SymGetModuleInfo64"), GetLastError(), s.AddrPC.Offset));
+        this->OnDbgHelpErr(_T("SymGetModuleInfo64"), GetLastError(), s.AddrPC.Offset);
       }
     } // we seem to have a valid PC
 
-    csEntry.type = (frameNum == 0) ? firstEntry : nextEntry;
+    csEntry.type = (frameNum == 0) ? StackWalkerBase::firstEntry : StackWalkerBase::nextEntry;
     bLastEntryCalled = false;
-    this->OnCallstackEntry(csEntry);
+    this->m_parent->OnCallstackEntry(csEntry);
 
     if (s.AddrReturn.Offset == 0)
     {
       bLastEntryCalled = true;
-      csEntry.type = lastEntry;
-      this->OnCallstackEntry(csEntry);
+      csEntry.type = StackWalkerBase::lastEntry;
+      this->m_parent->OnCallstackEntry(csEntry);
       SetLastError(ERROR_SUCCESS);
       break;
     }
   } // for ( frameNum )
 
-  csEntry.type = lastEntry;
+  csEntry.type = StackWalkerBase::lastEntry;
   if (bLastEntryCalled == false)
-    this->OnCallstackEntry(csEntry);
-
-  if (isThreadSuspended)
-    ResumeThread(hThread);
+    this->m_parent->OnCallstackEntry(csEntry);
 
   return TRUE;
 }
