@@ -38,6 +38,15 @@ public:
     // nothing
   }
 
+  BOOL ShowCallstack(HANDLE          hThread = GetCurrentThread(),
+                     const CONTEXT * context = NULL,
+                     PReadMemRoutine pReadMemFunc = NULL,
+                     LPVOID          pUserData = NULL) STKWLK_NOEXCEPT
+  {
+    StackWalkerDemo::ShowModules();
+    return StackWalkerDemo::ShowCallstack(hThread, context, pReadMemFunc, pUserData);
+  }
+
 protected:
   virtual void OnOutput(LPCTSTR szText) STKWLK_NOEXCEPT
   {

@@ -334,6 +334,7 @@ public:
     m_hDbhHelp = NULL;
     m_hProcess = hProcess;
     m_SymInitialized = false;
+    m_showLoadModules = false;
     m_modulesLoaded = false;
     m_modulesNumber = 0;
     m_IHM64Version = 0;      // unknown version
@@ -355,6 +356,7 @@ public:
       Sym.Cleanup(m_hProcess);
     memset(&Sym, 0, sizeof(Sym));
     m_SymInitialized = false;
+    m_showLoadModules = false;
     m_modulesLoaded = false;
     m_modulesNumber = 0;
     if (m_hDbhHelp == NULL)
@@ -514,6 +516,7 @@ public:
   HMODULE m_hDbhHelp;
   HANDLE  m_hProcess;
   bool    m_SymInitialized;
+  bool    m_showLoadModules;
   bool    m_modulesLoaded;
   int     m_modulesNumber;
   char    m_IHM64Version;      // actual version of IMAGEHLP_MODULE64 struct
@@ -865,6 +868,7 @@ private:
       if (result == ERROR_SUCCESS)
         result = ERROR_DS_SCHEMA_NOT_LOADED;
     }
+    if (m_showLoadModules == true)
     {
       // try to retrieve the file-version:
       if ((this->m_parent->m_options & StackWalkerBase::RetrieveFileVersion) != 0)
@@ -934,19 +938,16 @@ public:
     return result;
   }
 
-  BOOL LoadModules(HANDLE hProcess, DWORD dwProcessId) STKWLK_NOEXCEPT
+  bool LoadModules(HANDLE hProcess, DWORD dwProcessId) STKWLK_NOEXCEPT
   {
-    int mcnt;
     m_modulesLoaded = false;
-    m_modulesNumber = 0;
     // first try toolhelp32
-    mcnt = GetModuleListTH32(hProcess, dwProcessId);
-    if (mcnt < 2)
-      mcnt = GetModuleListPSAPI(hProcess);  // then try psapi
-    if (mcnt < 2)
+    m_modulesNumber = GetModuleListTH32(hProcess, dwProcessId);
+    if (m_modulesNumber < 2)   // then try psapi
+      m_modulesNumber = GetModuleListPSAPI(hProcess);
+    if (m_modulesNumber < 2)
       return false;
     m_modulesLoaded = true;
-    m_modulesNumber = mcnt;
     return true;
   }
 
@@ -1034,6 +1035,8 @@ public:
                                    PVOID   lpBuffer,
                                    DWORD   nSize,
                                    LPDWORD lpNumberOfBytesRead) STKWLK_NOEXCEPT;
+
+  bool InitAndLoad(bool showLoadModules = false) STKWLK_NOEXCEPT;
 };
 
 const ULONGLONG qwThreadDataMagic = 0x00A1B2F4D9F00D33;
@@ -1219,32 +1222,27 @@ PCONTEXT StackWalkerBase::GetCurrentExceptionContext() STKWLK_NOEXCEPT
   return get_current_exception_context();
 }
 
-BOOL StackWalkerBase::LoadModules() STKWLK_NOEXCEPT
+bool StackWalkerInternal::InitAndLoad(bool showLoadModules) STKWLK_NOEXCEPT
 {
-  if (this->m_sw == NULL)
-  {
-    SetLastError(ERROR_DLL_INIT_FAILED);
-    return FALSE;
-  }
-  if (this->m_sw->m_modulesLoaded == true)
-    return TRUE;
+  if (m_SymInitialized == true && m_modulesLoaded == true)
+    return true;
 
   // Build the sym-path:
   LPTSTR szSymPath = NULL;
-  if ((this->m_options & SymBuildPath) != 0)
+  if (m_SymInitialized == false && (m_parent->m_options & StackWalkerBase::SymBuildPath) != 0)
   {
     const size_t nSymPathLen = 4096;
     szSymPath = (LPTSTR) malloc((nSymPathLen + 8) * sizeof(TCHAR));
     if (szSymPath == NULL)
     {
       SetLastError(ERROR_NOT_ENOUGH_MEMORY);
-      return FALSE;
+      return false;
     }
     szSymPath[0] = 0;
     // Now first add the (optional) provided sympath:
-    if (this->m_szSymPath != NULL)
+    if (this->m_parent->m_szSymPath != NULL)
     {
-      MyStrCat(szSymPath, nSymPathLen, this->m_szSymPath);
+      MyStrCat(szSymPath, nSymPathLen, this->m_parent->m_szSymPath);
       MyStrCat(szSymPath, nSymPathLen, _T(";"));
     }
 
@@ -1303,7 +1301,7 @@ BOOL StackWalkerBase::LoadModules() STKWLK_NOEXCEPT
       MyStrCat(szSymPath, nSymPathLen, _T(";"));
     }
 
-    if ((this->m_options & SymUseSymSrv) != 0)
+    if ((this->m_parent->m_options & StackWalkerBase::SymUseSymSrv) != 0)
     {
       LPCTSTR drive = _T("c:\\");
       len = GetEnvironmentVariable(_T("SYSTEMDRIVE"), szTemp, nTempLen);
@@ -1318,20 +1316,39 @@ BOOL StackWalkerBase::LoadModules() STKWLK_NOEXCEPT
     }
   } // if SymBuildPath
 
-  // First Init the whole stuff...
-  BOOL bRet = this->m_sw->Init(szSymPath);
-  if (szSymPath != NULL)
-    free(szSymPath);
-  szSymPath = NULL;
-  if (bRet == FALSE)
+  bool bRet = false;
+  if (m_SymInitialized == false)
   {
-    this->OnDbgHelpErr(TDbgHelpErr(_T("Error while initializing dbghelp.dll")));
-    SetLastError(ERROR_DLL_INIT_FAILED);
-    return FALSE;
+    // First Init the whole stuff...
+    bRet = !!this->Init(szSymPath);
+    if (szSymPath != NULL)
+      free(szSymPath);
+    szSymPath = NULL;
+    if (bRet == false)
+    {
+      this->OnDbgHelpErr(_T("Error while initializing dbghelp.dll"));
+      SetLastError(ERROR_DLL_INIT_FAILED);
+      return false;
+    }
   }
-
-  bRet = this->m_sw->LoadModules(this->m_hProcess, this->m_dwProcessId);
+  this->m_showLoadModules = showLoadModules;
+  bRet = this->LoadModules(this->m_hProcess, this->m_parent->m_dwProcessId);
   return bRet;
+}
+
+bool StackWalkerBase::ShowModules() STKWLK_NOEXCEPT
+{
+  if (this->m_sw == NULL)
+  {
+    SetLastError(ERROR_OUTOFMEMORY);
+    return false;
+  }
+  this->m_sw->m_modulesLoaded = false;  // reset flag
+  this->m_sw->m_modulesNumber = 0;
+  bool bRet = this->m_sw->InitAndLoad(true);
+  if (bRet == false)
+    SetLastError(ERROR_DLL_INIT_FAILED);
+  return true;
 }
 
 BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
@@ -1412,10 +1429,7 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
   if (context != NULL)
     c = *context;
 
-  if (this->m_sw->m_modulesLoaded == false)
-    this->LoadModules(); // ignore the result...
-
-  if (this->m_sw->m_hDbhHelp == NULL)
+  if (this->m_sw->InitAndLoad() == false)
   {
     SetLastError(ERROR_DLL_INIT_FAILED);
     goto fin;
@@ -1606,17 +1620,11 @@ BOOL StackWalkerBase::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
     SetLastError(ERROR_OUTOFMEMORY);
     goto fin;
   }
-  // Load modules if not done yet
-  if (this->m_sw->m_modulesLoaded == false)
-    this->LoadModules(); // ignore the result...
-
-  // Verify that the DebugHelp.dll was actually found
-  if (this->m_sw->m_hDbhHelp == NULL)
+  if (this->m_sw->InitAndLoad() == false)
   {
     SetLastError(ERROR_DLL_INIT_FAILED);
     goto fin;
   }
-
   // SymGetSymFromAddr64 or SymFromAddr is required
   if (m_sw->Sym.GetSymFromAddr == NULL && m_sw->Sym.FromAddr == NULL)
     goto fin;

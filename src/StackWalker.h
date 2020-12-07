@@ -169,7 +169,7 @@ public:
       LPVOID  pUserData // optional data, which was passed in "ShowCallstack"
   );
 
-  BOOL LoadModules() STKWLK_NOEXCEPT;
+  bool ShowModules() STKWLK_NOEXCEPT;
 
   BOOL ShowCallstack(const CONTEXT * context) STKWLK_NOEXCEPT;
 
