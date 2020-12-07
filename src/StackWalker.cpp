@@ -333,7 +333,9 @@ public:
     m_parent = parent;
     m_hDbhHelp = NULL;
     m_hProcess = hProcess;
-    m_SymInitialized = FALSE;
+    m_SymInitialized = false;
+    m_modulesLoaded = false;
+    m_modulesNumber = 0;
     m_IHM64Version = 0;      // unknown version
     memset(&Sym, 0, sizeof(Sym));
     m_ctx.ContextFlags = 0;
@@ -349,10 +351,12 @@ public:
 
   void UnloadDbgHelpLib() STKWLK_NOEXCEPT
   {
-    if (m_hDbhHelp != NULL && m_SymInitialized != FALSE && Sym.Cleanup != NULL)
+    if (m_hDbhHelp != NULL && m_SymInitialized != false && Sym.Cleanup != NULL)
       Sym.Cleanup(m_hProcess);
     memset(&Sym, 0, sizeof(Sym));
-    m_SymInitialized = FALSE;
+    m_SymInitialized = false;
+    m_modulesLoaded = false;
+    m_modulesNumber = 0;
     if (m_hDbhHelp == NULL)
       return;
     FreeLibrary(m_hDbhHelp);
@@ -472,8 +476,8 @@ public:
     GetProcAddrEx(fcnt, m_hDbhHelp, "SymFromAddr", (LPVOID*)&Sym.FromAddr);
 #endif
 
-    m_SymInitialized = Sym.Initialize(m_hProcess, szSymPath, FALSE);
-    if (m_SymInitialized == FALSE)
+    m_SymInitialized = !!Sym.Initialize(m_hProcess, szSymPath, FALSE);
+    if (m_SymInitialized == false)
     {
       this->OnDbgHelpErr(_T("SymInitialize"), GetLastError());
       UnloadDbgHelpLib();
@@ -509,7 +513,9 @@ public:
   CONTEXT m_ctx;
   HMODULE m_hDbhHelp;
   HANDLE  m_hProcess;
-  BOOL    m_SymInitialized;
+  bool    m_SymInitialized;
+  bool    m_modulesLoaded;
+  int     m_modulesNumber;
   char    m_IHM64Version;      // actual version of IMAGEHLP_MODULE64 struct
 
 #pragma pack(push, 8)
@@ -694,7 +700,7 @@ private:
   typedef MODULEENTRY32* LPMODULEENTRY32;
 #pragma pack(pop)
 
-  BOOL GetModuleListTH32(HANDLE hProcess, DWORD pid) STKWLK_NOEXCEPT
+  int GetModuleListTH32(HANDLE hProcess, DWORD pid) STKWLK_NOEXCEPT
   {
     // try both dlls...
     LPCWSTR      dllname[] = { L"kernel32.dll", L"tlhelp32.dll" };
@@ -727,29 +733,28 @@ private:
     }
 
     if (hToolhelp == NULL)
-      return FALSE;
+      return -1;
 
     hSnap = CreateTH32Snapshot(TH32CS_SNAPMODULE, pid);
     if (hSnap == (HANDLE)-1)
     {
       FreeLibrary(hToolhelp);
-      return FALSE;
+      return -2;
     }
 
     bool keepGoing = !!Module32First(hSnap, &me);
     int cnt = 0;
     while (keepGoing)
     {
-      this->LoadModule(hProcess, me.szExePath, me.szModule, (DWORD64)me.modBaseAddr,
-                       me.modBaseSize);
-      cnt++;
+      DWORD rc = this->LoadModule(hProcess, me.szExePath, me.szModule, (DWORD64)me.modBaseAddr,
+                                  me.modBaseSize);
+      if (rc == ERROR_SUCCESS)
+        cnt++;
       keepGoing = !!Module32Next(hSnap, &me);
     }
     CloseHandle(hSnap);
     FreeLibrary(hToolhelp);
-    if (cnt <= 0)
-      return FALSE;
-    return TRUE;
+    return cnt;
   } // GetModuleListTH32
 
   // **************************************** PSAPI ************************
@@ -767,7 +772,7 @@ private:
     TCHAR     szModName[2048];
   } SW_MODULE_INFO, *PSW_MODULE_INFO;
 
-  BOOL GetModuleListPSAPI(HANDLE hProcess) STKWLK_NOEXCEPT
+  int GetModuleListPSAPI(HANDLE hProcess) STKWLK_NOEXCEPT
   {
     HINSTANCE hPsapi;
     BOOL  (WINAPI * EnumProcessModules)(HANDLE hProcess, HMODULE * lphModule, DWORD cb, LPDWORD lpcbNeeded);
@@ -780,11 +785,11 @@ private:
     DWORD            mListSize = 0;
     size_t           mNumbers;
     size_t           i;
-    int              cnt = 0;
+    int              cnt = -1;
 
     hPsapi = LoadLibraryW(L"psapi.dll");
     if (hPsapi == NULL)
-      return FALSE;
+      return -1;
 
     int fcnt = 0;
     GetProcAddrEx(fcnt, hPsapi, "EnumProcessModules", (LPVOID*)&EnumProcessModules);
@@ -809,7 +814,11 @@ private:
     if (mListSize > sizeof(mList->hMods))
       goto cleanup;
 
+    cnt = 0;
     mNumbers = (size_t)mListSize / sizeof(mList->hMods[0]);
+    if (mNumbers < 2)
+      goto cleanup;
+
     for (i = 0; i < mNumbers; i++)
     {
       HMODULE hMod = mList->hMods[i];
@@ -826,7 +835,8 @@ private:
                                     (DWORD64)mi.lpBaseOfDll, mi.SizeOfImage);
       if (dwRes != ERROR_SUCCESS)
         this->OnDbgHelpErr(_T("LoadModule"), dwRes);
-      cnt++;
+      else
+        cnt++;
     }
 
   cleanup:
@@ -835,7 +845,7 @@ private:
     if (mList != NULL)
       free(mList);
 
-    return cnt != 0;
+    return cnt;
   } // GetModuleListPSAPI
 
   DWORD LoadModule(HANDLE hProcess, LPCTSTR img, LPCTSTR mod, DWORD64 baseAddr, DWORD size) STKWLK_NOEXCEPT
@@ -926,11 +936,18 @@ public:
 
   BOOL LoadModules(HANDLE hProcess, DWORD dwProcessId) STKWLK_NOEXCEPT
   {
+    int mcnt;
+    m_modulesLoaded = false;
+    m_modulesNumber = 0;
     // first try toolhelp32
-    if (GetModuleListTH32(hProcess, dwProcessId))
-      return true;
-    // then try psapi
-    return GetModuleListPSAPI(hProcess);
+    mcnt = GetModuleListTH32(hProcess, dwProcessId);
+    if (mcnt < 2)
+      mcnt = GetModuleListPSAPI(hProcess);  // then try psapi
+    if (mcnt < 2)
+      return false;
+    m_modulesLoaded = true;
+    m_modulesNumber = mcnt;
+    return true;
   }
 
   BOOL GetModuleInfo(HANDLE hProcess, DWORD64 baseAddr, T_IMAGEHLP_MODULE64 & modInfo) STKWLK_NOEXCEPT
@@ -1123,7 +1140,6 @@ bool StackWalkerBase::Init(ExceptType extype, int options, LPCTSTR szSymPath, DW
   if (extype == AfterExcept && exp)
     ctx = exp->ContextRecord;
   this->m_options = options;
-  this->m_modulesLoaded = FALSE;
   this->m_szSymPath = NULL;
   this->m_szDbgHelpPath = NULL;
   this->m_MaxRecursionCount = 1000;
@@ -1210,7 +1226,7 @@ BOOL StackWalkerBase::LoadModules() STKWLK_NOEXCEPT
     SetLastError(ERROR_DLL_INIT_FAILED);
     return FALSE;
   }
-  if (m_modulesLoaded != FALSE)
+  if (this->m_sw->m_modulesLoaded == true)
     return TRUE;
 
   // Build the sym-path:
@@ -1315,8 +1331,6 @@ BOOL StackWalkerBase::LoadModules() STKWLK_NOEXCEPT
   }
 
   bRet = this->m_sw->LoadModules(this->m_hProcess, this->m_dwProcessId);
-  if (bRet != FALSE)
-    m_modulesLoaded = TRUE;
   return bRet;
 }
 
@@ -1398,7 +1412,7 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
   if (context != NULL)
     c = *context;
 
-  if (m_modulesLoaded == FALSE)
+  if (this->m_sw->m_modulesLoaded == false)
     this->LoadModules(); // ignore the result...
 
   if (this->m_sw->m_hDbhHelp == NULL)
@@ -1593,7 +1607,7 @@ BOOL StackWalkerBase::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
     goto fin;
   }
   // Load modules if not done yet
-  if (m_modulesLoaded == FALSE)
+  if (this->m_sw->m_modulesLoaded == false)
     this->LoadModules(); // ignore the result...
 
   // Verify that the DebugHelp.dll was actually found

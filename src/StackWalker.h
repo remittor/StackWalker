@@ -264,7 +264,6 @@ protected:
   StackWalkerInternal* m_sw;
   HANDLE               m_hProcess;
   DWORD                m_dwProcessId;
-  BOOL                 m_modulesLoaded;
   LPTSTR               m_szSymPath;
   LPCWSTR              m_szDbgHelpPath;
 
