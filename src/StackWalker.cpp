@@ -1013,12 +1013,27 @@ public:
       m_parent->OnDbgHelpErr(data);
   }
 
+  typedef struct _TThreadData
+  {
+    ULONGLONG             qwMagic;    // must be qwThreadDataMagic
+    StackWalkerInternal * swi;
+    PReadMemRoutine       pReadMemFunc;
+    LPVOID                pUserData;
+  } TThreadData;
+
   BOOL ShowCallstack(HANDLE          hThread,
                      const CONTEXT & context,
-                     PReadMemRoutine pReadMemoryFunc,
-                     LPVOID          pUserData) STKWLK_NOEXCEPT;
+                     TThreadData   & tdata) STKWLK_NOEXCEPT;
+
+  static BOOL WINAPI MyReadProcMem(HANDLE  hProcess,
+                                   DWORD64 qwBaseAddress,
+                                   PVOID   lpBuffer,
+                                   DWORD   nSize,
+                                   LPDWORD lpNumberOfBytesRead) STKWLK_NOEXCEPT;
 };
 
+const ULONGLONG qwThreadDataMagic = 0x00A1B2F4D9F00D33;
+typedef StackWalkerInternal::TThreadData          TThreadData;
 typedef StackWalkerInternal::T_SW_SYM_INFO        T_SW_SYM_INFO;
 typedef StackWalkerInternal::T_IMAGEHLP_MODULE64  T_IMAGEHLP_MODULE64;
 
@@ -1318,13 +1333,6 @@ BOOL StackWalkerBase::LoadModules() STKWLK_NOEXCEPT
   return bRet;
 }
 
-// The following is used to pass the "userData"-Pointer to the user-provided readMemoryFunction
-// This has to be done due to a problem with the "hProcess"-parameter in x64...
-// Because this class is in no case multi-threading-enabled (because of the limitations
-// of dbghelp.dll) it is "safe" to use a static-variable
-static StackWalkerBase::PReadMemRoutine s_readMemoryFunction = NULL;
-static LPVOID                           s_readMemoryFunction_UserData = NULL;
-
 BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
                                     const CONTEXT * context,
                                     PReadMemRoutine pReadMemFunc,
@@ -1336,6 +1344,7 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
   bool          isThreadSuspended = false;
   PNT_TIB       lpTIB = NULL;
   LPVOID        ArbitraryUserPointer = NULL;
+  TThreadData   tdata = { 0 };
 
   if (this->m_sw == NULL)
   {
@@ -1343,8 +1352,10 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
     return FALSE;
   }
 
-  s_readMemoryFunction = pReadMemFunc;
-  s_readMemoryFunction_UserData = pUserData;
+  tdata.qwMagic = qwThreadDataMagic;
+  tdata.swi = m_sw;
+  tdata.pReadMemFunc = pReadMemFunc;
+  tdata.pUserData = pUserData;
 
   if (hThread == NULL)
     hThread = STKWLK_CURRENT_THREAD_HANDLE;
@@ -1412,7 +1423,7 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
   lpTIB = GetCurrentTIB();
   ArbitraryUserPointer = lpTIB->ArbitraryUserPointer;  // save original value
 
-  result = m_sw->ShowCallstack(hThread, c, pReadMemFunc, pUserData);
+  result = m_sw->ShowCallstack(hThread, c, tdata);
 
 fin:
   if (lpTIB)
@@ -1425,8 +1436,7 @@ fin:
 
 BOOL StackWalkerInternal::ShowCallstack(HANDLE          hThread,
                                         const CONTEXT & c,
-                                        PReadMemRoutine pReadMemoryFunc,
-                                        LPVOID          pUserData) STKWLK_NOEXCEPT
+                                        TThreadData   & tdata) STKWLK_NOEXCEPT
 {  
   TCallstackEntry      csEntry;
   TCHAR                undName[STACKWALK_MAX_NAMELEN];
@@ -1438,6 +1448,8 @@ BOOL StackWalkerInternal::ShowCallstack(HANDLE          hThread,
   bool                 bLastEntryCalled = true;
   int                  curRecursionCount = 0;
   const int            maxRecursionCount = m_parent->m_MaxRecursionCount;
+
+  PNT_TIB lpTIB = GetCurrentTIB();
 
   // init STACKFRAME for first call
   STACKFRAME64 s; // in/out stackframe
@@ -1476,13 +1488,16 @@ BOOL StackWalkerInternal::ShowCallstack(HANDLE          hThread,
 
   for (frameNum = 0;; ++frameNum)
   {
+    LPVOID ArbitraryUserPointer = lpTIB->ArbitraryUserPointer;   // save
+    lpTIB->ArbitraryUserPointer = (LPVOID)&tdata;
     // get next stack frame (StackWalk64(), SymFunctionTableAccess64(), SymGetModuleBase64())
     // if this returns ERROR_INVALID_ADDRESS (487) or ERROR_NOACCESS (998), you can
     // assume that either you are done, or that the stack is so hosed that the next
     // deeper frame could not be found.
     // CONTEXT need not to be supplied if imageTyp is IMAGE_FILE_MACHINE_I386!
-    BOOL rc = Sym.StackWalk(imageType, m_hProcess, hThread, &s, (PVOID)&c, StackWalkerBase::myReadProcMem, 
+    BOOL rc = Sym.StackWalk(imageType, m_hProcess, hThread, &s, (PVOID)&c, MyReadProcMem, 
                             Sym.FunctionTableAccess, Sym.GetModuleBase, NULL);
+    lpTIB->ArbitraryUserPointer = ArbitraryUserPointer;  // restore
     if (rc == FALSE)
     {
       // INFO: "StackWalk64" does not set "GetLastError"...
@@ -1660,13 +1675,22 @@ fin:
   return result;
 };
 
-BOOL WINAPI StackWalkerBase::myReadProcMem(HANDLE  hProcess,
-                                           DWORD64 qwBaseAddress,
-                                           PVOID   lpBuffer,
-                                           DWORD   nSize,
-                                           LPDWORD lpNumberOfBytesRead) STKWLK_NOEXCEPT
+BOOL WINAPI StackWalkerInternal::MyReadProcMem(HANDLE  hProcess,
+                                               DWORD64 qwBaseAddress,
+                                               PVOID   lpBuffer,
+                                               DWORD   nSize,
+                                               LPDWORD lpNumberOfBytesRead) STKWLK_NOEXCEPT
 {
-  if (s_readMemoryFunction == NULL)
+  PNT_TIB lpTIB = GetCurrentTIB();
+  TThreadData * tdata = (TThreadData *)lpTIB->ArbitraryUserPointer;
+  if (tdata == NULL)
+    return FALSE;
+  if (tdata->qwMagic != qwThreadDataMagic)
+    return FALSE;
+  if (tdata->swi == NULL)
+    return FALSE;
+
+  if (tdata->pReadMemFunc == NULL)
   {
     SIZE_T st;
     BOOL   bRet = ReadProcessMemory(hProcess, (LPVOID)qwBaseAddress, lpBuffer, nSize, &st);
@@ -1674,11 +1698,8 @@ BOOL WINAPI StackWalkerBase::myReadProcMem(HANDLE  hProcess,
     //printf("ReadMemory: hProcess: %p, baseAddr: %p, buffer: %p, size: %d, read: %d, result: %d\n", hProcess, (LPVOID) qwBaseAddress, lpBuffer, nSize, (DWORD) st, (DWORD) bRet);
     return bRet;
   }
-  else
-  {
-    return s_readMemoryFunction(hProcess, qwBaseAddress, lpBuffer, nSize, lpNumberOfBytesRead,
-                                s_readMemoryFunction_UserData);
-  }
+
+  return tdata->pReadMemFunc(hProcess, qwBaseAddress, lpBuffer, nSize, lpNumberOfBytesRead, tdata->pUserData);
 }
 
 // =====================================================================================
