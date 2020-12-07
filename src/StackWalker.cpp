@@ -866,38 +866,8 @@ private:
       T_IMAGEHLP_MODULE64 Module;
       LPCTSTR szSymType = _T("-unknown-");
       if (this->GetModuleInfo(hProcess, baseAddr, Module) != FALSE)
-      {
-        switch (Module.SymType)
-        {
-          case SymNone:
-            szSymType = _T("-nosymbols-");
-            break;
-          case SymCoff: // 1
-            szSymType = _T("COFF");
-            break;
-          case SymCv: // 2
-            szSymType = _T("CV");
-            break;
-          case SymPdb: // 3
-            szSymType = _T("PDB");
-            break;
-          case SymExport: // 4
-            szSymType = _T("-exported-");
-            break;
-          case SymDeferred: // 5
-            szSymType = _T("-deferred-");
-            break;
-          case SymSym: // 6
-            szSymType = _T("SYM");
-            break;
-          case 7: // SymDia:
-            szSymType = _T("DIA");
-            break;
-          case 8: //SymVirtual:
-            szSymType = _T("Virtual");
-            break;
-        }
-      }
+        szSymType = GetSymTypeNameById(Module.SymType);
+
       StackWalkerBase::TLoadModule data;
       data.imgName = img;
       data.modName = mod;
@@ -1011,6 +981,23 @@ public:
     StackWalkerBase::TDbgHelpErr data(szFuncName, gle, addr);
     if (m_parent)
       m_parent->OnDbgHelpErr(data);
+  }
+
+  LPCTSTR GetSymTypeNameById(SYM_TYPE stype)
+  {
+    switch (stype)
+    {
+    case SymNone:      return _T("-nosymbols-");
+    case SymCoff:      return _T("COFF");
+    case SymCv:        return _T("CV");
+    case SymPdb:       return _T("PDB");
+    case SymExport:    return _T("-exported-");
+    case SymDeferred:  return _T("-deferred-");
+    case SymSym:       return _T("SYM");
+    case 7:            return _T("DIA");
+    case 8:            return _T("Virtual");
+    }
+    return NULL;
   }
 
   typedef struct _TThreadData
@@ -1557,48 +1544,13 @@ BOOL StackWalkerInternal::ShowCallstack(HANDLE          hThread,
 
       // show module info (SymGetModuleInfo64())
       if (this->GetModuleInfo(this->m_hProcess, s.AddrPC.Offset, Module) != FALSE)
-      { // got module info OK
-        switch (Module.SymType)
-        {
-          case SymNone:
-            csEntry.symTypeString = _T("-nosymbols-");
-            break;
-          case SymCoff:
-            csEntry.symTypeString = _T("COFF");
-            break;
-          case SymCv:
-            csEntry.symTypeString = _T("CV");
-            break;
-          case SymPdb:
-            csEntry.symTypeString = _T("PDB");
-            break;
-          case SymExport:
-            csEntry.symTypeString = _T("-exported-");
-            break;
-          case SymDeferred:
-            csEntry.symTypeString = _T("-deferred-");
-            break;
-          case SymSym:
-            csEntry.symTypeString = _T("SYM");
-            break;
-#if API_VERSION_NUMBER >= 9
-          case SymDia:
-            csEntry.symTypeString = _T("DIA");
-            break;
-#endif
-          case 8: //SymVirtual:
-            csEntry.symTypeString = _T("Virtual");
-            break;
-          default:
-            //_snprintf( ty, sizeof(ty), "symtype=%ld", (long) Module.SymType );
-            csEntry.symTypeString = NULL;
-            break;
-        }
-
+      {
+        // got module info OK
+        csEntry.symTypeString = GetSymTypeNameById(Module.SymType);
         csEntry.moduleName = Module.ModuleName;
         csEntry.baseOfImage = Module.BaseOfImage;
         csEntry.loadedImageName = Module.LoadedImageName;
-      } // got module info OK
+      }
       else
       {
         this->OnDbgHelpErr(_T("SymGetModuleInfo64"), GetLastError(), s.AddrPC.Offset);
