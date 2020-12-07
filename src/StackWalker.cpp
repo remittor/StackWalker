@@ -368,12 +368,12 @@ public:
     m_modulesNumber = 0;
   }
 
-  BOOL Init(LPCTSTR szSymPath) STKWLK_NOEXCEPT
+  bool Init(LPCTSTR szSymPath) STKWLK_NOEXCEPT
   {
     TCHAR buf[STACKWALK_MAX_NAMELEN];
 
     if (m_parent == NULL)
-      return FALSE;
+      return false;
 
     if (!m_hDbhHelp && m_parent->m_szDbgHelpPath)
       m_hDbhHelp = LoadLibraryW(m_parent->m_szDbgHelpPath);
@@ -431,7 +431,7 @@ public:
       m_hDbhHelp = LoadLibraryW(L"dbghelp.dll");
 
     if (m_hDbhHelp == NULL)
-      return FALSE;
+      return false;
 
     StackWalkerBase::TLoadDbgHelp data;
     memset(buf, 0, sizeof(buf));
@@ -468,7 +468,7 @@ public:
     {
       this->OnDbgHelpErr(_T("LoadDbgHelp"), ERROR_INVALID_TABLE);
       UnloadDbgHelpLib();
-      return FALSE;
+      return false;
     }
     fcnt = 0;
 #ifdef _UNICODE
@@ -486,7 +486,7 @@ public:
     {
       this->OnDbgHelpErr(_T("SymInitialize"), GetLastError());
       UnloadDbgHelpLib();
-      return FALSE;
+      return false;
     }
 
     DWORD symOptions = Sym.GetOptions();
@@ -510,7 +510,7 @@ public:
     idata.szUserName = szUserName;
     this->m_parent->OnSymInit(idata);
 
-    return TRUE;
+    return true;
   }
 
   StackWalkerBase * m_parent;
@@ -882,7 +882,7 @@ private:
       // Retrieve some additional-infos about the module
       T_IMAGEHLP_MODULE64 Module;
       LPCTSTR szSymType = _T("-unknown-");
-      if (this->GetModuleInfo(hProcess, baseAddr, Module) != FALSE)
+      if (this->GetModuleInfo(hProcess, baseAddr, Module) != false)
         szSymType = GetSymTypeNameById(Module.SymType);
 
       StackWalkerBase::TLoadModule data;
@@ -954,13 +954,13 @@ public:
     return true;
   }
 
-  BOOL GetModuleInfo(HANDLE hProcess, DWORD64 baseAddr, T_IMAGEHLP_MODULE64 & modInfo) STKWLK_NOEXCEPT
+  bool GetModuleInfo(HANDLE hProcess, DWORD64 baseAddr, T_IMAGEHLP_MODULE64 & modInfo) STKWLK_NOEXCEPT
   {
     memset(&modInfo, 0, sizeof(modInfo));
     if (Sym.GetModuleInfo == NULL)
     {
       SetLastError(ERROR_DLL_INIT_FAILED);
-      return FALSE;
+      return false;
     }
     // First try to use the larger ModuleInfo-Structure
     if (m_IHM64Version == 0 || m_IHM64Version == 3)
@@ -971,30 +971,30 @@ public:
         modInfo.SizeOfStruct = sizeof(IMAGEHLP_MODULE64_V3);
         if (m_IHM64Version == 0)
           m_IHM64Version = 3;
-        return TRUE;
+        return true;
       }
       if (m_IHM64Version == 3)
       {
         SetLastError(ERROR_DLL_INIT_FAILED);
-        return FALSE;
+        return false;
       }
       if (GetLastError() != ERROR_INVALID_PARAMETER)
-        return FALSE;
+        return false;
       // try V2 struct only when SymGetModuleInfo returned error 87
       memset(&modInfo, 0, sizeof(modInfo));
     }
 
     // could not retrieve the bigger structure, try with the smaller one (as defined in VC7.1)...
     modInfo.SizeOfStruct = sizeof(IMAGEHLP_MODULE64_V2);
-    if (Sym.GetModuleInfo(hProcess, baseAddr, &modInfo) != FALSE)
+    if (Sym.GetModuleInfo(hProcess, baseAddr, &modInfo) != false)
     {
       modInfo.SizeOfStruct = sizeof(IMAGEHLP_MODULE64_V2);
       if (m_IHM64Version == 0)
         m_IHM64Version = 2; // to prevent unnecessary calls with the larger V3 struct...
-      return TRUE;
+      return true;
     }
     SetLastError(ERROR_DLL_INIT_FAILED);
-    return FALSE;
+    return false;
   }
 
   void OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle = 0, DWORD64 addr = 0) STKWLK_NOEXCEPT
@@ -1029,7 +1029,7 @@ public:
     LPVOID                pUserData;
   } TThreadData;
 
-  BOOL ShowCallstack(HANDLE          hThread,
+  bool ShowCallstack(HANDLE          hThread,
                      const CONTEXT & context,
                      TThreadData   & tdata) STKWLK_NOEXCEPT;
 
@@ -1353,12 +1353,12 @@ bool StackWalkerBase::ShowModules() STKWLK_NOEXCEPT
   return true;
 }
 
-BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
+bool StackWalkerBase::ShowCallstack(HANDLE          hThread,
                                     const CONTEXT * context,
                                     PReadMemRoutine pReadMemFunc,
                                     LPVOID          pUserData) STKWLK_NOEXCEPT
 {
-  BOOL          result = FALSE;
+  bool          result = false;
   CONTEXT       c;
   bool          isCurrentThread = false;
   bool          isThreadSuspended = false;
@@ -1369,7 +1369,7 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
   if (this->m_sw == NULL)
   {
     SetLastError(ERROR_OUTOFMEMORY);
-    return FALSE;
+    return false;
   }
 
   tdata.qwMagic = qwThreadDataMagic;
@@ -1452,7 +1452,7 @@ fin:
   return result;
 }
 
-BOOL StackWalkerInternal::ShowCallstack(HANDLE          hThread,
+bool StackWalkerInternal::ShowCallstack(HANDLE          hThread,
                                         const CONTEXT & c,
                                         TThreadData   & tdata) STKWLK_NOEXCEPT
 {  
@@ -1574,7 +1574,7 @@ BOOL StackWalkerInternal::ShowCallstack(HANDLE          hThread,
       } // yes, we have SymGetLineFromAddr64()
 
       // show module info (SymGetModuleInfo64())
-      if (this->GetModuleInfo(this->m_hProcess, s.AddrPC.Offset, Module) != FALSE)
+      if (this->GetModuleInfo(this->m_hProcess, s.AddrPC.Offset, Module) != false)
       {
         // got module info OK
         csEntry.symTypeString = GetSymTypeNameById(Module.SymType);
@@ -1606,17 +1606,17 @@ BOOL StackWalkerInternal::ShowCallstack(HANDLE          hThread,
   if (bLastEntryCalled == false)
     this->m_parent->OnCallstackEntry(csEntry);
 
-  return TRUE;
+  return true;
 }
 
-BOOL StackWalkerBase::ShowCallstack(const CONTEXT * context) STKWLK_NOEXCEPT
+bool StackWalkerBase::ShowCallstack(const CONTEXT * context) STKWLK_NOEXCEPT
 {
   return ShowCallstack(GetCurrentThread(), context, NULL, NULL);
 }
 
-BOOL StackWalkerBase::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
+bool StackWalkerBase::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
 {
-  BOOL result = FALSE;
+  bool result = false;
   LPCTSTR sname = NULL;
   if (this->m_sw == NULL)
   {
@@ -1642,7 +1642,7 @@ BOOL StackWalkerBase::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
     if (sname == NULL)
       this->OnDbgHelpErr(TDbgHelpErr(_T("SymGetSymFromAddr"), GetLastError(), dwAddress));
     else
-      result = TRUE;
+      result = true;
   }
 fin:  
   // Object name output

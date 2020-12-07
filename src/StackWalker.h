@@ -171,14 +171,14 @@ public:
 
   bool ShowModules() STKWLK_NOEXCEPT;
 
-  BOOL ShowCallstack(const CONTEXT * context) STKWLK_NOEXCEPT;
+  bool ShowCallstack(const CONTEXT * context) STKWLK_NOEXCEPT;
 
-  BOOL ShowCallstack(HANDLE          hThread = GetCurrentThread(),
+  bool ShowCallstack(HANDLE          hThread = GetCurrentThread(),
                      const CONTEXT * context = NULL,
                      PReadMemRoutine pReadMemFunc = NULL,
                      LPVOID          pUserData = NULL) STKWLK_NOEXCEPT;
 
-  BOOL ShowObject(LPVOID pObject) STKWLK_NOEXCEPT;
+  bool ShowObject(LPVOID pObject) STKWLK_NOEXCEPT;
 
 protected:
   struct TFileVer
