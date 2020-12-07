@@ -147,9 +147,11 @@
 #ifdef _UNICODE
   typedef SYMBOL_INFOW        T_SYMBOL_INFO;
   typedef IMAGEHLP_LINEW64    T_IMAGEHLP_LINE64;
+  typedef PSYM_ENUMMODULES_CALLBACKW64  T_SYM_ENUMMODULES_CALLBACK64;
 #else
   typedef SYMBOL_INFO         T_SYMBOL_INFO;
   typedef IMAGEHLP_LINE64     T_IMAGEHLP_LINE64;
+  typedef PSYM_ENUMMODULES_CALLBACK64   T_SYM_ENUMMODULES_CALLBACK64;
 #endif
 
 #ifndef _countof
@@ -464,20 +466,23 @@ public:
     GetProcAddrEx(fcnt, m_hDbhHelp, "SymFromAddrW", (LPVOID*)&Sym.FromAddr);
     GetProcAddrEx(fcnt, m_hDbhHelp, "UnDecorateSymbolNameW", (LPVOID*)&Sym.UnDecorateName);
     GetProcAddrEx(fcnt, m_hDbhHelp, "SymLoadModuleExW", (LPVOID*)&Sym.LoadModuleEx);
+    GetProcAddrEx(fcnt, m_hDbhHelp, "SymEnumerateModulesW64", (LPVOID*)&Sym.EnumerateModules);
 #else
     GetProcAddrEx(fcnt, m_hDbhHelp, "SymInitialize", (LPVOID*)&Sym.Initialize);
     GetProcAddrEx(fcnt, m_hDbhHelp, "SymGetModuleInfo64", (LPVOID*)&Sym.GetModuleInfo);
     GetProcAddrEx(fcnt, m_hDbhHelp, "SymGetSymFromAddr64", (LPVOID*)&Sym.GetSymFromAddr);
     GetProcAddrEx(fcnt, m_hDbhHelp, "UnDecorateSymbolName", (LPVOID*)&Sym.UnDecorateName);
     GetProcAddrEx(fcnt, m_hDbhHelp, "SymLoadModule64", (LPVOID*)&Sym.LoadModule);
+    GetProcAddrEx(fcnt, m_hDbhHelp, "SymEnumerateModules64", (LPVOID*)&Sym.EnumerateModules);
 #endif
     GetProcAddrEx(fcnt, m_hDbhHelp, "StackWalk64", (LPVOID*)&Sym.StackWalk);
     GetProcAddrEx(fcnt, m_hDbhHelp, "SymGetOptions", (LPVOID*)&Sym.GetOptions);
     GetProcAddrEx(fcnt, m_hDbhHelp, "SymSetOptions", (LPVOID*)&Sym.SetOptions);
     GetProcAddrEx(fcnt, m_hDbhHelp, "SymFunctionTableAccess64", (LPVOID*)&Sym.FunctionTableAccess);
     GetProcAddrEx(fcnt, m_hDbhHelp, "SymGetModuleBase64", (LPVOID*)&Sym.GetModuleBase);
+    GetProcAddrEx(fcnt, m_hDbhHelp, "SymUnloadModule64", (LPVOID*)&Sym.UnloadModule);
 
-    if (fcnt < 11)
+    if (fcnt < 13)
     {
       this->OnDbgHelpErr(_T("LoadDbgHelp"), ERROR_INVALID_TABLE);
       UnloadDbgHelpLib();
@@ -535,6 +540,8 @@ public:
   bool    m_showLoadModules;
   bool    m_modulesLoaded;
   int     m_modulesNumber;
+  DWORD64 m_modList[1024];     // list of loaded modules (baseAddress)
+  int     m_modListSize;       // number of list elements
   char    m_IHM64Version;      // actual version of IMAGEHLP_MODULE64 struct
   LPVOID  m_pUserData;
 
@@ -626,6 +633,12 @@ public:
                                     IN DWORD DllSize,
                                     IN PMODLOAD_DATA Data,
                                     IN DWORD Flags);
+
+    BOOL (WINAPI * EnumerateModules)(HANDLE                       hProcess,
+                                     T_SYM_ENUMMODULES_CALLBACK64 EnumModulesCallback,
+                                     PVOID                        UserContext);
+
+    BOOL (WINAPI * UnloadModule)(HANDLE hProcess, DWORD64 BaseOfDll);
 
     DWORD (WINAPI * SetOptions)(IN DWORD SymOptions);
 
@@ -1011,6 +1024,48 @@ public:
     return false;
   }
 
+  static BOOL WINAPI SymEnumModulesCallback(LPCTSTR ModuleName, DWORD64 BaseOfDll, PVOID UserContext) STKWLK_NOEXCEPT
+  {
+    StackWalkerInternal * swi = (StackWalkerInternal *)UserContext;
+    if (swi && swi->m_modListSize < _countof(swi->m_modList))
+      swi->m_modList[swi->m_modListSize++] = BaseOfDll;
+    return TRUE;
+  }
+
+  int UpdateModulesList() STKWLK_NOEXCEPT
+  {
+    m_modListSize = 0;
+    Sym.EnumerateModules(m_hProcess, (T_SYM_ENUMMODULES_CALLBACK64)SymEnumModulesCallback, this);
+    return m_modListSize;
+  }
+
+  bool UnloadModules() STKWLK_NOEXCEPT
+  {
+    bool result = false;
+    int i;
+    int mcnt;
+    if (m_SymInitialized == false || m_modulesNumber <= 0)
+    {
+      result = true;
+      goto fin;
+    }
+    result = false;
+    mcnt = UpdateModulesList();
+    if (mcnt <= 0)
+      goto fin;
+
+    for (i = 0; i < mcnt; i++)
+    {
+      Sym.UnloadModule(m_hProcess, m_modList[i]);
+    }
+    result = true;
+  fin:  
+    m_modulesLoaded = false;
+    m_modulesNumber = 0;
+    m_showLoadModules = false;
+    return result;
+  }
+
   void OnDbgHelpErr(LPCTSTR szFuncName, DWORD gle = 0, DWORD64 addr = 0) STKWLK_NOEXCEPT
   {
     StackWalkerBase::TDbgHelpErr data(szFuncName, gle, addr);
@@ -1018,7 +1073,7 @@ public:
       m_parent->OnDbgHelpErr(data);
   }
 
-  LPCTSTR GetSymTypeNameById(SYM_TYPE stype)
+  LPCTSTR GetSymTypeNameById(SYM_TYPE stype) STKWLK_NOEXCEPT
   {
     switch (stype)
     {
@@ -1089,7 +1144,7 @@ typedef struct _ThreadBasicInfo
   LONG      BasePriority;
 } ThreadBasicInfo;
 
-static DWORD GetThreadIdByHandle(HANDLE thread)
+static DWORD GetThreadIdByHandle(HANDLE thread) STKWLK_NOEXCEPT
 {
   if (thread == STKWLK_CURRENT_THREAD_HANDLE)
     return GetCurrentThreadId();
@@ -1114,7 +1169,7 @@ static DWORD GetThreadIdByHandle(HANDLE thread)
 #endif
 }
 
-static PNT_TIB GetCurrentTIB()
+static PNT_TIB GetCurrentTIB() STKWLK_NOEXCEPT
 {
 #if _MSC_VER >= 1400
   return (PNT_TIB)NtCurrentTeb();
@@ -1367,7 +1422,7 @@ bool StackWalkerBase::ShowModules(LPVOID pUserData) STKWLK_NOEXCEPT
   }
   this->m_sw->EnterCriticalSection();
   this->m_sw->m_pUserData = pUserData;
-  this->m_sw->ResetLoadModules();
+  this->m_sw->UnloadModules();
   bool bRet = this->m_sw->InitAndLoad(true);
   this->m_sw->LeaveCriticalSection();
   if (bRet == false)
@@ -1456,7 +1511,7 @@ bool StackWalkerBase::ShowCallstack(HANDLE          hThread,
   if (context != NULL)
     c = *context;
 
-  this->m_sw->ResetLoadModules();
+  this->m_sw->UnloadModules();
   if (this->m_sw->InitAndLoad() == false)
   {
     SetLastError(ERROR_DLL_INIT_FAILED);
@@ -1650,7 +1705,7 @@ bool StackWalkerBase::ShowObject(LPVOID pObject, LPVOID pUserData) STKWLK_NOEXCE
   }
   this->m_sw->EnterCriticalSection();
   this->m_sw->m_pUserData = pUserData;
-  this->m_sw->ResetLoadModules();
+  this->m_sw->UnloadModules();
   if (this->m_sw->InitAndLoad() == false)
   {
     SetLastError(ERROR_DLL_INIT_FAILED);
