@@ -331,6 +331,7 @@ public:
   StackWalkerInternal(StackWalkerBase * parent, HANDLE hProcess, PCONTEXT ctx) STKWLK_NOEXCEPT
   {
     m_parent = parent;
+    InitializeCriticalSection(&m_critsec);
     m_hDbhHelp = NULL;
     m_hProcess = hProcess;
     m_SymInitialized = false;
@@ -345,6 +346,7 @@ public:
   ~StackWalkerInternal() STKWLK_NOEXCEPT
   {
     UnloadDbgHelpLib();
+    DeleteCriticalSection(&m_critsec);
     m_parent = NULL;
   }
 
@@ -366,6 +368,16 @@ public:
     m_showLoadModules = false;
     m_modulesLoaded = false;
     m_modulesNumber = 0;
+  }
+
+  void EnterCriticalSection() STKWLK_NOEXCEPT
+  {
+    ::EnterCriticalSection(&m_critsec);
+  }
+
+  void LeaveCriticalSection() STKWLK_NOEXCEPT
+  {
+    ::LeaveCriticalSection(&m_critsec);
   }
 
   bool Init(LPCTSTR szSymPath) STKWLK_NOEXCEPT
@@ -514,7 +526,7 @@ public:
   }
 
   StackWalkerBase * m_parent;
-
+  CRITICAL_SECTION  m_critsec;
   CONTEXT m_ctx;
   HMODULE m_hDbhHelp;
   HANDLE  m_hProcess;
@@ -1346,8 +1358,10 @@ bool StackWalkerBase::ShowModules() STKWLK_NOEXCEPT
     SetLastError(ERROR_OUTOFMEMORY);
     return false;
   }
+  this->m_sw->EnterCriticalSection();
   this->m_sw->ResetLoadModules();
   bool bRet = this->m_sw->InitAndLoad(true);
+  this->m_sw->LeaveCriticalSection();
   if (bRet == false)
     SetLastError(ERROR_DLL_INIT_FAILED);
   return true;
@@ -1408,6 +1422,8 @@ bool StackWalkerBase::ShowCallstack(HANDLE          hThread,
     }
   }
 
+  this->m_sw->EnterCriticalSection();
+
   if (context == NULL)
   {
     if (isCurrentThread == false)
@@ -1448,7 +1464,7 @@ fin:
     lpTIB->ArbitraryUserPointer = ArbitraryUserPointer;   // restore original value
   if (isThreadSuspended)
     ResumeThread(hThread);
-
+  this->m_sw->LeaveCriticalSection();
   return result;
 }
 
@@ -1621,8 +1637,9 @@ bool StackWalkerBase::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
   if (this->m_sw == NULL)
   {
     SetLastError(ERROR_OUTOFMEMORY);
-    goto fin;
+    return false;
   }
+  this->m_sw->EnterCriticalSection();
   this->m_sw->ResetLoadModules();
   if (this->m_sw->InitAndLoad() == false)
   {
@@ -1650,6 +1667,7 @@ fin:
   data.pObject = pObject;
   data.szName = sname;
   this->OnShowObject(data);
+  this->m_sw->LeaveCriticalSection();
   return result;
 };
 
