@@ -334,9 +334,7 @@ public:
     m_hDbhHelp = NULL;
     m_hProcess = hProcess;
     m_SymInitialized = false;
-    m_showLoadModules = false;
-    m_modulesLoaded = false;
-    m_modulesNumber = 0;
+    ResetLoadModules();
     m_IHM64Version = 0;      // unknown version
     memset(&Sym, 0, sizeof(Sym));
     m_ctx.ContextFlags = 0;
@@ -356,13 +354,18 @@ public:
       Sym.Cleanup(m_hProcess);
     memset(&Sym, 0, sizeof(Sym));
     m_SymInitialized = false;
-    m_showLoadModules = false;
-    m_modulesLoaded = false;
-    m_modulesNumber = 0;
+    ResetLoadModules();
     if (m_hDbhHelp == NULL)
       return;
     FreeLibrary(m_hDbhHelp);
     m_hDbhHelp = NULL;
+  }
+
+  void ResetLoadModules() STKWLK_NOEXCEPT
+  {
+    m_showLoadModules = false;
+    m_modulesLoaded = false;
+    m_modulesNumber = 0;
   }
 
   BOOL Init(LPCTSTR szSymPath) STKWLK_NOEXCEPT
@@ -1343,8 +1346,7 @@ bool StackWalkerBase::ShowModules() STKWLK_NOEXCEPT
     SetLastError(ERROR_OUTOFMEMORY);
     return false;
   }
-  this->m_sw->m_modulesLoaded = false;  // reset flag
-  this->m_sw->m_modulesNumber = 0;
+  this->m_sw->ResetLoadModules();
   bool bRet = this->m_sw->InitAndLoad(true);
   if (bRet == false)
     SetLastError(ERROR_DLL_INIT_FAILED);
@@ -1429,6 +1431,7 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
   if (context != NULL)
     c = *context;
 
+  this->m_sw->ResetLoadModules();
   if (this->m_sw->InitAndLoad() == false)
   {
     SetLastError(ERROR_DLL_INIT_FAILED);
@@ -1620,6 +1623,7 @@ BOOL StackWalkerBase::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
     SetLastError(ERROR_OUTOFMEMORY);
     goto fin;
   }
+  this->m_sw->ResetLoadModules();
   if (this->m_sw->InitAndLoad() == false)
   {
     SetLastError(ERROR_DLL_INIT_FAILED);
