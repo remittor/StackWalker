@@ -1033,6 +1033,50 @@ StackWalkerBase::TDbgHelpErr::TDbgHelpErr(LPCTSTR szFuncName, DWORD gle, DWORD64
 
 // =============================================================
 
+#define STKWLK_CURRENT_THREAD_HANDLE  ((HANDLE)(ULONG_PTR)-2)
+
+typedef LONG (WINAPI * TNtQueryInfoThread)(HANDLE thread, DWORD infoClass, PVOID info, ULONG infoLen, PULONG retLen);
+
+static TNtQueryInfoThread NtQueryInfoThread = NULL;
+
+typedef struct _ThreadBasicInfo
+{
+  LONG      ExitStatus;
+  LPVOID    TebBaseAddress;
+  HANDLE    UniqueProcess;
+  HANDLE    UniqueThread; 
+  ULONG_PTR AffinityMask;
+  LONG      Priority;
+  LONG      BasePriority;
+} ThreadBasicInfo;
+
+static DWORD GetThreadIdByHandle(HANDLE thread)
+{
+  if (thread == STKWLK_CURRENT_THREAD_HANDLE)
+    return GetCurrentThreadId();
+  if (thread == NULL)
+    return 0;
+#if _WIN32_WINNT >= 0x0502
+  return GetThreadId(thread);
+#else
+  if (NtQueryInfoThread == NULL)
+  {
+    HMODULE ntdll = GetModuleHandleW(L"ntdll");
+    if (ntdll == NULL)
+      return 0;
+    NtQueryInfoThread = (TNtQueryInfoThread) GetProcAddress(ntdll, "NtQueryInformationThread");
+    if (NtQueryInfoThread == NULL)
+      return 0;
+  }
+  ThreadBasicInfo tbi = { 0 };
+  ULONG len;
+  LONG ns = NtQueryInfoThread(thread, 0, (PVOID)&tbi, sizeof(tbi), &len);
+  return (ns == 0) ? (DWORD)(ULONG_PTR)tbi.UniqueThread : 0;
+#endif
+}
+
+// =============================================================
+
 #if defined(_MSC_VER) && _MSC_VER >= 1400 && _MSC_VER < 1900
 extern "C" void* __cdecl _getptd();
 #endif
@@ -1274,20 +1318,14 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
                                     PReadMemRoutine pReadMemFunc,
                                     LPVOID          pUserData) STKWLK_NOEXCEPT
 {
-  CONTEXT              c;
-  bool                 isThreadSuspended = false;
+  BOOL          result = FALSE;
+  CONTEXT       c;
+  bool          isCurrentThread = false;
+  bool          isThreadSuspended = false;
 
   if (this->m_sw == NULL)
   {
     SetLastError(ERROR_OUTOFMEMORY);
-    return FALSE;
-  }
-  if (m_modulesLoaded == FALSE)
-    this->LoadModules(); // ignore the result...
-
-  if (this->m_sw->m_hDbhHelp == NULL)
-  {
-    SetLastError(ERROR_DLL_INIT_FAILED);
     return FALSE;
   }
 
@@ -1295,18 +1333,14 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
   s_readMemoryFunction_UserData = pUserData;
 
   if (hThread == NULL)
-    hThread = GetCurrentThread();
+    hThread = STKWLK_CURRENT_THREAD_HANDLE;
+
+  if (hThread == STKWLK_CURRENT_THREAD_HANDLE || GetThreadIdByHandle(hThread) == GetCurrentThreadId())
+    isCurrentThread = true;
 
   if (context == NULL)
   {
-    // If no context is provided, capture the context
-    // See: https://stackwalker.codeplex.com/discussions/446958
-#if _WIN32_WINNT <= 0x0501
-    // If we need to support XP, we need to use the "old way", because "GetThreadId" is not available!
-    if (hThread == GetCurrentThread())
-#else
-    if (GetThreadId(hThread) == GetCurrentThreadId())
-#endif
+    if (isCurrentThread == true)
     {
       memset(&c, 0, sizeof(c));
       if (m_sw->m_ctx.ContextFlags != 0)
@@ -1327,11 +1361,15 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
 #endif
       }
     }
-    else
+  }
+
+  if (context == NULL)
+  {
+    if (isCurrentThread == false)
     {
       DWORD dwCount = SuspendThread(hThread);
       if (dwCount == (DWORD)-1)
-        return FALSE;
+        goto fin;
       isThreadSuspended = true;
       memset(&c, 0, sizeof(CONTEXT));
       c.ContextFlags = STKWLK_CONTEXT_FLAGS;
@@ -1341,17 +1379,25 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
       // It cannot work, if this process is x64 and the target process is x64... this is not supported...
       // See also: http://www.howzatt.demon.co.uk/articles/DebuggingInWin64.html
       if (GetThreadContext(hThread, &c) == FALSE)
-      {
-        ResumeThread(hThread);
-        return FALSE;
-      }
+        goto fin;
     }
   }
-  else
+
+  if (context != NULL)
     c = *context;
 
-  BOOL result = m_sw->ShowCallstack(hThread, c, pReadMemFunc, pUserData);
+  if (m_modulesLoaded == FALSE)
+    this->LoadModules(); // ignore the result...
 
+  if (this->m_sw->m_hDbhHelp == NULL)
+  {
+    SetLastError(ERROR_DLL_INIT_FAILED);
+    goto fin;
+  }
+
+  result = m_sw->ShowCallstack(hThread, c, pReadMemFunc, pUserData);
+
+fin:
   if (isThreadSuspended)
     ResumeThread(hThread);
 
