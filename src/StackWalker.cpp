@@ -1075,6 +1075,18 @@ static DWORD GetThreadIdByHandle(HANDLE thread)
 #endif
 }
 
+static PNT_TIB GetCurrentTIB()
+{
+#if _MSC_VER >= 1400
+  return (PNT_TIB)NtCurrentTeb();
+#else
+  PNT_TIB lpTIB;
+  __asm mov eax, fs:[0x18]
+  __asm mov[lpTIB], eax
+  return lpTIB;
+#endif
+}
+
 // =============================================================
 
 #if defined(_MSC_VER) && _MSC_VER >= 1400 && _MSC_VER < 1900
@@ -1322,6 +1334,8 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
   CONTEXT       c;
   bool          isCurrentThread = false;
   bool          isThreadSuspended = false;
+  PNT_TIB       lpTIB = NULL;
+  LPVOID        ArbitraryUserPointer = NULL;
 
   if (this->m_sw == NULL)
   {
@@ -1395,9 +1409,14 @@ BOOL StackWalkerBase::ShowCallstack(HANDLE          hThread,
     goto fin;
   }
 
+  lpTIB = GetCurrentTIB();
+  ArbitraryUserPointer = lpTIB->ArbitraryUserPointer;  // save original value
+
   result = m_sw->ShowCallstack(hThread, c, pReadMemFunc, pUserData);
 
 fin:
+  if (lpTIB)
+    lpTIB->ArbitraryUserPointer = ArbitraryUserPointer;   // restore original value
   if (isThreadSuspended)
     ResumeThread(hThread);
 
