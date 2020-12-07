@@ -337,6 +337,7 @@ public:
     m_SymInitialized = false;
     ResetLoadModules();
     m_IHM64Version = 0;      // unknown version
+    m_pUserData = NULL;
     memset(&Sym, 0, sizeof(Sym));
     m_ctx.ContextFlags = 0;
     if (ctx != NULL)
@@ -535,6 +536,7 @@ public:
   bool    m_modulesLoaded;
   int     m_modulesNumber;
   char    m_IHM64Version;      // actual version of IMAGEHLP_MODULE64 struct
+  LPVOID  m_pUserData;
 
 #pragma pack(push, 8)
   struct IMAGEHLP_MODULE64_V2
@@ -1237,6 +1239,11 @@ PCONTEXT StackWalkerBase::GetCurrentExceptionContext() STKWLK_NOEXCEPT
   return get_current_exception_context();
 }
 
+LPVOID StackWalkerBase::GetUserData() STKWLK_NOEXCEPT
+{
+  return (this->m_sw == NULL) ? NULL : this->m_sw->m_pUserData;
+}
+
 bool StackWalkerInternal::InitAndLoad(bool showLoadModules) STKWLK_NOEXCEPT
 {
   if (m_SymInitialized == true && m_modulesLoaded == true)
@@ -1351,7 +1358,7 @@ bool StackWalkerInternal::InitAndLoad(bool showLoadModules) STKWLK_NOEXCEPT
   return bRet;
 }
 
-bool StackWalkerBase::ShowModules() STKWLK_NOEXCEPT
+bool StackWalkerBase::ShowModules(LPVOID pUserData) STKWLK_NOEXCEPT
 {
   if (this->m_sw == NULL)
   {
@@ -1359,6 +1366,7 @@ bool StackWalkerBase::ShowModules() STKWLK_NOEXCEPT
     return false;
   }
   this->m_sw->EnterCriticalSection();
+  this->m_sw->m_pUserData = pUserData;
   this->m_sw->ResetLoadModules();
   bool bRet = this->m_sw->InitAndLoad(true);
   this->m_sw->LeaveCriticalSection();
@@ -1423,6 +1431,7 @@ bool StackWalkerBase::ShowCallstack(HANDLE          hThread,
   }
 
   this->m_sw->EnterCriticalSection();
+  this->m_sw->m_pUserData = pUserData;
 
   if (context == NULL)
   {
@@ -1625,12 +1634,12 @@ bool StackWalkerInternal::ShowCallstack(HANDLE          hThread,
   return true;
 }
 
-bool StackWalkerBase::ShowCallstack(const CONTEXT * context) STKWLK_NOEXCEPT
+bool StackWalkerBase::ShowCallstack(const CONTEXT * context, LPVOID pUserData) STKWLK_NOEXCEPT
 {
-  return ShowCallstack(GetCurrentThread(), context, NULL, NULL);
+  return ShowCallstack(STKWLK_CURRENT_THREAD_HANDLE, context, NULL, pUserData);
 }
 
-bool StackWalkerBase::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
+bool StackWalkerBase::ShowObject(LPVOID pObject, LPVOID pUserData) STKWLK_NOEXCEPT
 {
   bool result = false;
   LPCTSTR sname = NULL;
@@ -1640,6 +1649,7 @@ bool StackWalkerBase::ShowObject(LPVOID pObject) STKWLK_NOEXCEPT
     return false;
   }
   this->m_sw->EnterCriticalSection();
+  this->m_sw->m_pUserData = pUserData;
   this->m_sw->ResetLoadModules();
   if (this->m_sw->InitAndLoad() == false)
   {

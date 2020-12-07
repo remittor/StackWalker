@@ -155,6 +155,8 @@ public:
 
   PCONTEXT GetCurrentExceptionContext() STKWLK_NOEXCEPT;
 
+  LPVOID GetUserData() STKWLK_NOEXCEPT;
+
 private:
   bool Init(ExceptType extype, int options, LPCTSTR szSymPath, DWORD dwProcessId,
             HANDLE hProcess, PEXCEPTION_POINTERS exp = NULL) STKWLK_NOEXCEPT;
@@ -169,16 +171,16 @@ public:
       LPVOID  pUserData // optional data, which was passed in "ShowCallstack"
   );
 
-  bool ShowModules() STKWLK_NOEXCEPT;
+  bool ShowModules(LPVOID pUserData = NULL) STKWLK_NOEXCEPT;
 
-  bool ShowCallstack(const CONTEXT * context) STKWLK_NOEXCEPT;
+  bool ShowCallstack(const CONTEXT * context, LPVOID pUserData = NULL) STKWLK_NOEXCEPT;
 
   bool ShowCallstack(HANDLE          hThread = GetCurrentThread(),
                      const CONTEXT * context = NULL,
                      PReadMemRoutine pReadMemFunc = NULL,
                      LPVOID          pUserData = NULL) STKWLK_NOEXCEPT;
 
-  bool ShowObject(LPVOID pObject) STKWLK_NOEXCEPT;
+  bool ShowObject(LPVOID pObject, LPVOID pUserData = NULL) STKWLK_NOEXCEPT;
 
 protected:
   struct TFileVer
