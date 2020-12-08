@@ -42,7 +42,20 @@
 #pragma once
 
 #include <windows.h>
-#include <tchar.h>
+
+#if !defined(STKWLK_ANSI) && defined(_MBCS)
+#define STKWLK_ANSI
+#endif
+
+#ifndef STKWLK_ANSI
+typedef    WCHAR   SW_CHR;
+typedef   LPWSTR   SW_STR;
+typedef  LPCWSTR   SW_CSTR;
+#else
+typedef     CHAR   SW_CHR;
+typedef    LPSTR   SW_STR;
+typedef   LPCSTR   SW_CSTR;
+#endif
 
 #ifndef STKWLK_THROWABLE
 #if _MSC_VER < 1900    /* noexcept added since vs2015 */
@@ -120,7 +133,7 @@ public:
                   PEXCEPTION_POINTERS exp = NULL) STKWLK_NOEXCEPT;
 
   StackWalkerBase(int     options = OptionsAll, // 'int' is by design, to combine the enum-flags
-                  LPCTSTR szSymPath = NULL,
+                  SW_CSTR szSymPath = NULL,
                   DWORD   dwProcessId = GetCurrentProcessId(),
                   HANDLE  hProcess = GetCurrentProcess()) STKWLK_NOEXCEPT;
 
@@ -137,7 +150,7 @@ public:
 
   virtual ~StackWalkerBase() STKWLK_NOEXCEPT;
 
-  bool SetSymPath(LPCTSTR szSymPath) STKWLK_NOEXCEPT;
+  bool SetSymPath(SW_CSTR szSymPath) STKWLK_NOEXCEPT;
   
   bool SetDbgHelpPath(LPCWSTR szDllPath) STKWLK_NOEXCEPT;
 
@@ -148,7 +161,7 @@ public:
   LPVOID GetUserData() STKWLK_NOEXCEPT;
 
 private:
-  bool Init(ExceptType extype, int options, LPCTSTR szSymPath, DWORD dwProcessId,
+  bool Init(ExceptType extype, int options, SW_CSTR szSymPath, DWORD dwProcessId,
             HANDLE hProcess, PEXCEPTION_POINTERS exp = NULL) STKWLK_NOEXCEPT;
 
 public:
@@ -187,27 +200,27 @@ protected:
   struct TLoadDbgHelp
   {
     TFileVer ver;
-    LPCTSTR  szDllPath;
+    SW_CSTR  szDllPath;
   };
   virtual void OnLoadDbgHelp(const TLoadDbgHelp & data) STKWLK_NOEXCEPT = 0;
 
   struct TSymInit
   {
-    LPCTSTR  szSearchPath;
+    SW_CSTR  szSearchPath;
     DWORD    dwSymOptions;
-    LPCTSTR  szUserName;
+    SW_CSTR  szUserName;
   };
   virtual void OnSymInit(const TSymInit & data) STKWLK_NOEXCEPT = 0;
 
   struct TLoadModule
   {
-    LPCTSTR  imgName;
-    LPCTSTR  modName;
+    SW_CSTR  imgName;
+    SW_CSTR  modName;
     DWORD64  baseAddr;
     DWORD    size;
     DWORD    result;
-    LPCTSTR  symType;
-    LPCTSTR  pdbName;
+    SW_CSTR  symType;
+    SW_CSTR  pdbName;
     TFileVer ver;
   };
   virtual void OnLoadModule(const TLoadModule & data) STKWLK_NOEXCEPT = 0;
@@ -222,41 +235,41 @@ protected:
   {
     CallstackEntryType type;
     DWORD64  offset;           // if 0, we have no valid entry
-    LPCTSTR  name;
-    LPCTSTR  undName;
-    LPCTSTR  undFullName;
+    SW_CSTR  name;
+    SW_CSTR  undName;
+    SW_CSTR  undFullName;
     DWORD64  offsetFromSymbol;
     DWORD    offsetFromLine;
     DWORD    lineNumber;
-    LPCTSTR  lineFileName;
+    SW_CSTR  lineFileName;
     DWORD    symType;
-    LPCTSTR  symTypeString;
-    LPCTSTR  moduleName;
+    SW_CSTR  symTypeString;
+    SW_CSTR  moduleName;
     DWORD64  baseOfImage;
-    LPCTSTR  loadedImageName;
+    SW_CSTR  loadedImageName;
   };
   virtual void OnCallstackEntry(const TCallstackEntry & entry) STKWLK_NOEXCEPT = 0;
 
   struct TShowObject
   {
     LPVOID   pObject;
-    LPCTSTR  szName;
+    SW_CSTR  szName;
   };
   virtual void OnShowObject(const TShowObject & data) STKWLK_NOEXCEPT = 0;
 
   struct TDbgHelpErr
   {
-    LPCTSTR  szFuncName;
+    SW_CSTR  szFuncName;
     DWORD    gle;
     DWORD64  addr;
-    TDbgHelpErr(LPCTSTR szFuncName, DWORD gle = 0, DWORD64 addr = 0) STKWLK_NOEXCEPT;
+    TDbgHelpErr(SW_CSTR szFuncName, DWORD gle = 0, DWORD64 addr = 0) STKWLK_NOEXCEPT;
   };
   virtual void OnDbgHelpErr(const TDbgHelpErr & data) STKWLK_NOEXCEPT = 0;
 
   StackWalkerInternal* m_sw;
   HANDLE               m_hProcess;
   DWORD                m_dwProcessId;
-  LPTSTR               m_szSymPath;
+  SW_CSTR              m_szSymPath;
   LPCWSTR              m_szDbgHelpPath;
 
   int m_options;
@@ -276,7 +289,7 @@ public:
   { }
 
   StackWalkerDemo(int     options = OptionsAll, // 'int' is by design, to combine the enum-flags
-                  LPCTSTR szSymPath = NULL,
+                  SW_CSTR szSymPath = NULL,
                   DWORD   dwProcessId = GetCurrentProcessId(),
                   HANDLE  hProcess = GetCurrentProcess()) STKWLK_NOEXCEPT
     : StackWalkerBase(options, szSymPath, dwProcessId, hProcess)
@@ -298,7 +311,7 @@ public:
 
   virtual void OnDbgHelpErr(const TDbgHelpErr & data) STKWLK_NOEXCEPT;
 
-  virtual void OnOutput(LPCTSTR szText) STKWLK_NOEXCEPT;
+  virtual void OnOutput(SW_CSTR szText) STKWLK_NOEXCEPT;
 
 }; // class StackWalkerDemo
 

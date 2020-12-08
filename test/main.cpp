@@ -10,6 +10,20 @@
  *
  **********************************************************************/
 
+// For compatibility with <tchar.h>
+#if !defined(STKWLK_ANSI) && !defined(_MBCS)
+#ifndef _UNICODE
+#define _UNICODE 1
+#endif
+#ifndef UNICODE
+#define UNICODE 1
+#endif
+#else
+#ifndef _MBCS
+#define _MBCS 1
+#endif
+#endif
+
 #include "stackwalker.h"
 #include <stdio.h>
 #include <tchar.h>
