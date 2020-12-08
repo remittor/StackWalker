@@ -210,6 +210,8 @@
 #define __T(x)      L ## x
 #define sw_sdup                 _wcsdup
 #define sw_slen                 wcslen
+#define sw_scmp                 wcscmp
+#define sw_srchr                wcsrchr
 #define GetModuleFileName       GetModuleFileNameW
 #define GetUserName             GetUserNameW
 #define GetVersionEx            GetVersionExW
@@ -223,6 +225,8 @@
 #define __T(x)      x
 #define sw_sdup                 _strdup
 #define sw_slen                 strlen
+#define sw_scmp                 strcmp
+#define sw_srchr                strrchr
 #define GetModuleFileName       GetModuleFileNameA
 #define GetUserName             GetUserNameA
 #define GetVersionEx            GetVersionExA
@@ -1864,20 +1868,28 @@ BOOL WINAPI StackWalkerInternal::MyReadProcMem(HANDLE  hProcess,
 
 // =====================================================================================
 
-void StackWalkerDemo::OnLoadModule(const TLoadModule & a) STKWLK_NOEXCEPT
+void StackWalkerDemo::OnLoadModule(const TLoadModule & data) STKWLK_NOEXCEPT
 {
   SW_CHR buf[STACKWALK_MAX_NAMELEN];
-  if (a.ver.isEmpty())
-    MyTStrFmt(buf, _countof(buf), _T("%s:%s (%p), size: %d (result: %d), SymType: '%s', PDB: '%s'\n"),
-              a.imgName, a.modName, (LPVOID)a.baseAddr, a.size, a.result, a.symType, a.pdbName);
-  else
+  SW_CHR ver[80] = { 0 };
+  SW_CHR res[24] = { 0 };
+
+  if (data.result != 0)
+    MyTStrFmt(res, _countof(res), _T(" [result: %d]"), data.result);
+
+  if (data.ver.isEmpty() == false)
+    MyTStrFmt(ver, _countof(ver), _T(" v%d.%d.%d.%d"),
+              data.ver.wMajor, data.ver.wMinor, data.ver.wBuild, data.ver.wRevis);
+
+  SW_CSTR pdbName = NULL;
+  if (sw_scmp(data.symType, _T("PDB")) == 0)
   {
-    MyTStrFmt(
-        buf, _countof(buf),
-        _T("%s:%s (%p), size: %d (result: %d), SymType: '%s', PDB: '%s', fileVersion: %d.%d.%d.%d\n"),
-        a.imgName, a.modName, (LPVOID)a.baseAddr, a.size, a.result, a.symType, a.pdbName,
-        a.ver.wMajor, a.ver.wMinor, a.ver.wBuild, a.ver.wRevis);
+    pdbName = data.pdbName;
+    if (data.pdbName && sw_srchr(data.pdbName, _T('\\')))
+      pdbName = sw_srchr(data.pdbName, _T('\\'));
   }
+  MyTStrFmt(buf, _countof(buf), _T("%p %s  (size: %d)%s%s, SymType: %s, PDB: \"%s\"\n"),
+            (LPVOID)data.baseAddr, data.modName, (int)data.size, ver, res, data.symType, pdbName);
   OnOutput(buf);
 }
 
@@ -1886,6 +1898,9 @@ void StackWalkerDemo::OnCallstackEntry(const TCallstackEntry & entry) STKWLK_NOE
   SW_CHR buf[STACKWALK_MAX_NAMELEN];
   if ((entry.type != lastEntry) && (entry.offset != 0))
   {
+    //if (entry.type == firstEntry)
+    //  OnOutput(_T("Callstack:\n"));
+
     TCallstackEntry e = entry;
     if (entry.name == NULL || entry.name[0] == 0)
       e.name = _T("(function-name not available)");
@@ -1896,7 +1911,7 @@ void StackWalkerDemo::OnCallstackEntry(const TCallstackEntry & entry) STKWLK_NOE
     if (entry.lineFileName == NULL || entry.lineFileName[0] == 0)
     {
       e.lineFileName = _T("(filename not available)");
-      if (entry.moduleName[0] == 0)
+      if (entry.moduleName == NULL || entry.moduleName[0] == 0)
         e.moduleName = _T("(module-name not available)");
       MyTStrFmt(buf, _countof(buf), _T("%p (%s): %s: %s\n"),
                 (LPVOID)e.offset, e.moduleName, e.lineFileName, e.name);
