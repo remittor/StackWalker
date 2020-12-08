@@ -1724,6 +1724,10 @@ bool StackWalkerInternal::ShowCallstack(HANDLE          hThread,
 
     if (s.AddrPC.Offset != 0)
     {
+      DWORD err_sym = 0;    // SymFromAddr
+      DWORD err_lfa = 0;    // GetLineFromAddr
+      DWORD err_gmi = 0;    // GetModuleInfo
+
       // we seem to have a valid PC
       // show procedure info (SymGetSymFromAddr64())
       SW_CSTR sname = SymFromAddr(m_hProcess, s.AddrPC.Offset, &csEntry.offsetFromSymbol, symInf);
@@ -1736,9 +1740,7 @@ bool StackWalkerInternal::ShowCallstack(HANDLE          hThread,
         csEntry.undFullName = undFullName;
       }
       else
-      {
-        this->OnDbgHelpErr(_T("SymGetSymFromAddr"), GetLastError(), s.AddrPC.Offset);
-      }
+        err_sym = GetLastError() ? GetLastError() : ERROR_INVALID_STATE;
 
       // show line number info, NT5.0-method (SymGetLineFromAddr64())
       if (Sym.GetLineFromAddr != NULL)
@@ -1750,9 +1752,8 @@ bool StackWalkerInternal::ShowCallstack(HANDLE          hThread,
           csEntry.lineFileName = Line.FileName;
         }
         else
-        {
-          this->OnDbgHelpErr(_T("SymGetLineFromAddr64"), GetLastError(), s.AddrPC.Offset);
-        }
+          if (GetLastError() != ERROR_INVALID_ADDRESS)
+            err_lfa = GetLastError();
       } // yes, we have SymGetLineFromAddr64()
 
       // show module info (SymGetModuleInfo64())
@@ -1765,9 +1766,14 @@ bool StackWalkerInternal::ShowCallstack(HANDLE          hThread,
         csEntry.loadedImageName = Module.LoadedImageName;
       }
       else
-      {
-        this->OnDbgHelpErr(_T("SymGetModuleInfo64"), GetLastError(), s.AddrPC.Offset);
-      }
+        err_gmi = GetLastError() ? GetLastError() : ERROR_INVALID_STATE;
+
+      if (err_gmi)
+        this->OnDbgHelpErr(_T("SymGetModuleInfo64"), err_gmi, s.AddrPC.Offset);
+      else if (err_sym)
+        this->OnDbgHelpErr(_T("SymGetSymFromAddr"), err_sym, s.AddrPC.Offset);
+      else if (err_lfa)
+        this->OnDbgHelpErr(_T("SymGetLineFromAddr64"), err_lfa, s.AddrPC.Offset);
     } // we seem to have a valid PC
 
     csEntry.type = (frameNum == 0) ? StackWalkerBase::firstEntry : StackWalkerBase::nextEntry;
