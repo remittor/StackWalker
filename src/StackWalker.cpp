@@ -296,6 +296,8 @@ static errno_t wcscat_s(WCHAR * dst, size_t dstcap, const WCHAR * src)
 {
   return wcsncat_s(dst, dstcap, src, _TRUNCATE);
 }
+#define _vsnwprintf_s(buf, bufcnt, maxcnt, fmt, argptr)   _vsnwprintf(buf, bufcnt, fmt, argptr)
+#define  _vsnprintf_s(buf, bufcnt, maxcnt, fmt, argptr)    _vsnprintf(buf, bufcnt, fmt, argptr)
 #endif
 
 static errno_t MyStrCpy(LPSTR szDest, size_t nMaxDestSize, LPCSTR szSrc) STKWLK_NOEXCEPT
@@ -336,26 +338,27 @@ static errno_t MyStrCat(LPWSTR szDest, size_t nMaxDestSize, LPCWSTR szSrc) STKWL
   return rc;
 }
 
-static errno_t MyTStrFmt(SW_STR dst, size_t dstcap, SW_CSTR fmt, ...) STKWLK_NOEXCEPT
+static errno_t MyStrFmt(LPSTR dst, size_t dstcap, LPCSTR fmt, ...) STKWLK_NOEXCEPT
 {
   if (dst == NULL || dstcap < 2 || fmt == NULL)
     return EINVAL;
-  memset(dst, 0, dstcap * sizeof(SW_CHR));
+  memset(dst, 0, dstcap);
   va_list argptr;
   va_start(argptr, fmt);
-#if _MSC_VER >= 1400
-#ifdef STKWLK_ANSI
   _vsnprintf_s(dst, dstcap, _TRUNCATE, fmt, argptr);
-#else
+  va_end(argptr);
+  dst[dstcap - 1] = 0;
+  return 0;
+}
+
+static errno_t MyStrFmt(LPWSTR dst, size_t dstcap, LPCWSTR fmt, ...) STKWLK_NOEXCEPT
+{
+  if (dst == NULL || dstcap < 2 || fmt == NULL)
+    return EINVAL;
+  memset(dst, 0, dstcap * sizeof(WCHAR));
+  va_list argptr;
+  va_start(argptr, fmt);
   _vsnwprintf_s(dst, dstcap, _TRUNCATE, fmt, argptr);
-#endif
-#else
-#ifdef STKWLK_ANSI
-  _vsnprintf(dst, dstcap, fmt, argptr);
-#else
-  _vsnwprintf(dst, dstcap, fmt, argptr);
-#endif
-#endif
   va_end(argptr);
   dst[dstcap - 1] = 0;
   return 0;
@@ -1880,10 +1883,10 @@ void StackWalkerDemo::OnLoadModule(const TLoadModule & data) STKWLK_NOEXCEPT
   SW_CHR res[24] = { 0 };
 
   if (data.result != 0)
-    MyTStrFmt(res, _countof(res), _T(" [result: %d]"), data.result);
+    MyStrFmt(res, _countof(res), _T(" [result: %d]"), data.result);
 
   if (data.ver.isEmpty() == false)
-    MyTStrFmt(ver, _countof(ver), _T(" v%d.%d.%d.%d"),
+    MyStrFmt(ver, _countof(ver), _T(" v%d.%d.%d.%d"),
               data.ver.wMajor, data.ver.wMinor, data.ver.wBuild, data.ver.wRevis);
 
   SW_CSTR pdbName = NULL;
@@ -1893,7 +1896,7 @@ void StackWalkerDemo::OnLoadModule(const TLoadModule & data) STKWLK_NOEXCEPT
     if (data.pdbName && sw_srchr(data.pdbName, _T('\\')))
       pdbName = sw_srchr(data.pdbName, _T('\\'));
   }
-  MyTStrFmt(buf, _countof(buf), _T("%p %s  (size: %d)%s%s, SymType: %s, PDB: \"%s\"\n"),
+  MyStrFmt(buf, _countof(buf), _T("%p %s  (size: %d)%s%s, SymType: %s, PDB: \"%s\"\n"),
             (LPVOID)data.baseAddr, data.modName, (int)data.size, ver, res, data.symType, pdbName);
   OnOutput(buf);
 }
@@ -1918,11 +1921,11 @@ void StackWalkerDemo::OnCallstackEntry(const TCallstackEntry & entry) STKWLK_NOE
       e.lineFileName = _T("(filename not available)");
       if (entry.moduleName == NULL || entry.moduleName[0] == 0)
         e.moduleName = _T("(module-name not available)");
-      MyTStrFmt(buf, _countof(buf), _T("%p (%s): %s: %s\n"),
+      MyStrFmt(buf, _countof(buf), _T("%p (%s): %s: %s\n"),
                 (LPVOID)e.offset, e.moduleName, e.lineFileName, e.name);
     }
     else
-      MyTStrFmt(buf, _countof(buf), _T("%s (%d): %s\n"),
+      MyStrFmt(buf, _countof(buf), _T("%s (%d): %s\n"),
                 e.lineFileName, e.lineNumber, e.name);
     OnOutput(buf);
   }
@@ -1931,14 +1934,14 @@ void StackWalkerDemo::OnCallstackEntry(const TCallstackEntry & entry) STKWLK_NOE
 void StackWalkerDemo::OnShowObject(const TShowObject & data) STKWLK_NOEXCEPT
 {
   SW_CHR buf[STACKWALK_MAX_NAMELEN];
-  MyTStrFmt(buf, _countof(buf), _T("Object: Addr: %p, Name: \"%s\"\n"), data.pObject, data.szName);
+  MyStrFmt(buf, _countof(buf), _T("Object: Addr: %p, Name: \"%s\"\n"), data.pObject, data.szName);
   OnOutput(buf);
 }
 
 void StackWalkerDemo::OnDbgHelpErr(const TDbgHelpErr & data) STKWLK_NOEXCEPT
 {
   SW_CHR buf[STACKWALK_MAX_NAMELEN];
-  MyTStrFmt(buf, _countof(buf), _T("ERROR: %s, GetLastError: %d (Address: %p)\n"),
+  MyStrFmt(buf, _countof(buf), _T("ERROR: %s, GetLastError: %d (Address: %p)\n"),
             data.szFuncName, data.gle, (LPVOID)data.addr);
   OnOutput(buf);
 }
@@ -1946,7 +1949,7 @@ void StackWalkerDemo::OnDbgHelpErr(const TDbgHelpErr & data) STKWLK_NOEXCEPT
 void StackWalkerDemo::OnLoadDbgHelp(const TLoadDbgHelp & a) STKWLK_NOEXCEPT
 {
   SW_CHR buf[STACKWALK_MAX_NAMELEN];
-  MyTStrFmt(buf, _countof(buf), _T("LoadDbgHelp: FileVer: %d.%d.%d.%d, Path: \"%s\"\n"),
+  MyStrFmt(buf, _countof(buf), _T("LoadDbgHelp: FileVer: %d.%d.%d.%d, Path: \"%s\"\n"),
             a.ver.wMajor, a.ver.wMinor, a.ver.wBuild, a.ver.wRevis, a.szDllPath);
   OnOutput(buf);
 }
@@ -1954,11 +1957,11 @@ void StackWalkerDemo::OnLoadDbgHelp(const TLoadDbgHelp & a) STKWLK_NOEXCEPT
 void StackWalkerDemo::OnSymInit(const TSymInit & data) STKWLK_NOEXCEPT
 {
   SW_CHR buf[STACKWALK_MAX_NAMELEN];
-  MyTStrFmt(buf, _countof(buf), _T("SymInit: symOptions: 0x%08X, UserName: \"%s\"\n"),
+  MyStrFmt(buf, _countof(buf), _T("SymInit: symOptions: 0x%08X, UserName: \"%s\"\n"),
             data.dwSymOptions, data.szUserName);
   OnOutput(buf);
 
-  MyTStrFmt(buf, _countof(buf), _T("Symbol-SearchPath: \"%s\"\n"), data.szSearchPath);
+  MyStrFmt(buf, _countof(buf), _T("Symbol-SearchPath: \"%s\"\n"), data.szSearchPath);
   OnOutput(buf);
 
   // Also display the OS-version
@@ -1970,7 +1973,7 @@ void StackWalkerDemo::OnSymInit(const TSymInit & data) STKWLK_NOEXCEPT
 #endif
   if (GetVersionEx((T_OSVERSIONINFO*)&ver) != FALSE)
   {
-    MyTStrFmt(buf, _countof(buf), _T("OS-Version: %d.%d.%d (%s) 0x%04x-%d\n"),
+    MyStrFmt(buf, _countof(buf), _T("OS-Version: %d.%d.%d (%s) 0x%04x-%d\n"),
               ver.dwMajorVersion, ver.dwMinorVersion, ver.dwBuildNumber, ver.szCSDVersion,
               ver.wSuiteMask, ver.wProductType);
     OnOutput(buf);
