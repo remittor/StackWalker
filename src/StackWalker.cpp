@@ -160,6 +160,9 @@
 
 // secure-CRT_functions are only available starting with VC8 (MSVC2005)
 #if _MSC_VER < 1400
+#ifndef _MT
+#pragma message ("Warning: It is highly recommended to replace the option /ML to /MT")
+#endif
 #ifdef _TRUNCATE
 #undef _TRUNCATE
 #endif
@@ -1183,7 +1186,7 @@ static PNT_TIB GetCurrentTIB() STKWLK_NOEXCEPT
 
 // =============================================================
 
-#if defined(_MSC_VER) && _MSC_VER >= 1400 && _MSC_VER < 1900
+#if defined(_MSC_VER) && _MSC_VER < 1900
 extern "C" void* __cdecl _getptd();
 #endif
 #if defined(_MSC_VER) && _MSC_VER >= 1900
@@ -1193,12 +1196,20 @@ extern "C" void** __cdecl __current_exception_context();
 static PCONTEXT get_current_exception_context() STKWLK_NOEXCEPT
 {
   PCONTEXT * pctx = NULL;
-#if defined(_MSC_VER) && _MSC_VER >= 1400 && _MSC_VER < 1900  
-  LPSTR ptd = (LPSTR)_getptd();
-  if (ptd)
-    pctx = (PCONTEXT *)(ptd + (sizeof(void*) == 4 ? 0x8C : 0xF8));
+#if _MSC_VER < 1400 && !defined(_MT)
+  return NULL;
+#elif _MSC_VER < 1900
+  char * ptd = (char *)_getptd();
+  if (ptd == NULL)
+    return NULL;
+#if _MSC_VER >= 1200 && _MSC_VER < 1300
+  pctx = (PCONTEXT *)(ptd + (sizeof(void*) == 4 ? 0x70 : 0xC0));  // VC6
+#elif _MSC_VER >= 1300 && _MSC_VER < 1400
+  pctx = (PCONTEXT *)(ptd + (sizeof(void*) == 4 ? 0x7C : 0xE0));  // VC7 ... vs2003
+#else
+  pctx = (PCONTEXT *)(ptd + (sizeof(void*) == 4 ? 0x8C : 0xF8));  // vs2005 ... vs2013
 #endif
-#if defined(_MSC_VER) && _MSC_VER >= 1900
+#else // _MSC_VER >= 1900
   pctx = (PCONTEXT *)__current_exception_context();
 #endif
   return pctx ? *pctx : NULL;
