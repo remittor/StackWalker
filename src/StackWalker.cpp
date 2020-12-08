@@ -993,6 +993,12 @@ private:
       if (result == ERROR_SUCCESS)
         result = ERROR_DS_SCHEMA_NOT_LOADED;
     }
+    // Retrieve some additional-infos about the module
+    T_IMAGEHLP_MODULE64 Module;
+    SW_CSTR szSymType = _T("-unknown-");
+    if (this->GetModuleInfo(hProcess, baseAddr, Module) != false)
+      szSymType = GetSymTypeNameById(Module.SymType);
+
     if (m_showLoadModules == true)
     {
       // try to retrieve the file-version:
@@ -1000,13 +1006,6 @@ private:
       {
         GetFileVersion(img, fileVersion);
       }
-
-      // Retrieve some additional-infos about the module
-      T_IMAGEHLP_MODULE64 Module;
-      SW_CSTR szSymType = _T("-unknown-");
-      if (this->GetModuleInfo(hProcess, baseAddr, Module) != false)
-        szSymType = GetSymTypeNameById(Module.SymType);
-
       StackWalkerBase::TLoadModule data;
       data.imgName = img;
       data.modName = mod;
