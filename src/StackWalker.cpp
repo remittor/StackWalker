@@ -595,12 +595,17 @@ struct DbgHelpLib
 class StackWalkerInternal
 {
 public:
-  StackWalkerInternal(StackWalkerBase * parent, HANDLE hProcess, PCONTEXT ctx) STKWLK_NOEXCEPT
+  StackWalkerInternal(StackWalkerBase * parent, int options, HANDLE hProcess, PCONTEXT ctx) STKWLK_NOEXCEPT
   {
     m_parent = parent;
     InitializeCriticalSection(&m_critsec);
+    m_options = options;
+    m_MaxRecursionCount = 1000;
+    m_szSymPath = NULL;
+    m_szDbgHelpPath = NULL;
     m_hDbhHelp = NULL;
     m_hProcess = hProcess;
+    m_dwProcessId = 0;
     m_SymInitialized = false;
     m_modListSize = 0;
     ResetLoadModules();
@@ -615,6 +620,8 @@ public:
   ~StackWalkerInternal() STKWLK_NOEXCEPT
   {
     UnloadDbgHelpLib();
+    m_parent->SetSymPath(NULL);
+    m_parent->SetDbgHelpPath(NULL);
     DeleteCriticalSection(&m_critsec);
     m_parent = NULL;
   }
@@ -656,8 +663,8 @@ public:
     if (m_parent == NULL)
       return false;
 
-    if (!m_hDbhHelp && m_parent->m_szDbgHelpPath)
-      m_hDbhHelp = LoadLibraryW(m_parent->m_szDbgHelpPath);
+    if (!m_hDbhHelp && m_szDbgHelpPath)
+      m_hDbhHelp = LoadLibraryW(m_szDbgHelpPath);
 
     // Dynamically load the Entry-Points for dbghelp.dll:
     // First try to load the newest one from
@@ -723,7 +730,7 @@ public:
     data.szDllPath = buf[0] ? buf : NULL;
     this->m_parent->OnLoadDbgHelp(data);
 
-    if ((m_parent->m_options & StackWalkerBase::SymIsolated) != 0)
+    if ((this->m_options & StackWalkerBase::SymIsolated) != 0)
       if (data.ver.wMajor >= 6)
         m_dh.ReloadLib(m_hDbhHelp, &m_hDbhHelp);
 
@@ -803,10 +810,16 @@ public:
 
   StackWalkerBase * m_parent;
   CRITICAL_SECTION  m_critsec;
-  CONTEXT m_ctx;
+  HANDLE            m_hProcess;
+  DWORD             m_dwProcessId;
+  CONTEXT           m_ctx;
+  SW_CSTR           m_szSymPath;
+  LPCWSTR           m_szDbgHelpPath;
+  int               m_options;
+  int               m_MaxRecursionCount;
+
   HMODULE m_hDbhHelp;
   DbgHelpLib m_dh;             // copy of the DLL for multi-instance use
-  HANDLE  m_hProcess;
   bool    m_SymInitialized;
   bool    m_showLoadModules;
   bool    m_modulesLoaded;
@@ -1178,7 +1191,7 @@ private:
     if (m_showLoadModules == true)
     {
       // try to retrieve the file-version:
-      if ((this->m_parent->m_options & StackWalkerBase::RetrieveFileVersion) != 0)
+      if ((this->m_options & StackWalkerBase::RetrieveFileVersion) != 0)
       {
         GetFileVersion(img, fileVersion);
       }
@@ -1492,19 +1505,15 @@ bool StackWalkerBase::Init(ExceptType extype, int options, SW_CSTR szSymPath, DW
     ctx = get_current_exception_context();
   if (extype == AfterExcept && exp)
     ctx = exp->ContextRecord;
-  this->m_options = options;
-  this->m_szSymPath = NULL;
-  this->m_szDbgHelpPath = NULL;
-  this->m_MaxRecursionCount = 1000;
   this->m_sw = NULL;
-  SetTargetProcess(dwProcessId, hProcess);
-  SetSymPath(szSymPath);
   /* MSVC ignore std::nothrow specifier for `new` operator */
   LPVOID buf = malloc(sizeof(StackWalkerInternal));
   if (!buf)
     return false;
   memset(buf, 0, sizeof(StackWalkerInternal));
-  this->m_sw = new(buf) StackWalkerInternal(this, this->m_hProcess, ctx);  // placement new
+  this->m_sw = new(buf) StackWalkerInternal(this, options, hProcess, ctx);  // placement new
+  SetTargetProcess(dwProcessId, hProcess);
+  SetSymPath(szSymPath);
   return true;
 }
 
@@ -1530,40 +1539,40 @@ StackWalkerBase::~StackWalkerBase() STKWLK_NOEXCEPT
     free(m_sw);
   }
   m_sw = NULL;
-  SetSymPath(NULL);
-  SetDbgHelpPath(NULL);
 }
 
 bool StackWalkerBase::SetSymPath(SW_CSTR szSymPath) STKWLK_NOEXCEPT
 {
-  if (m_szSymPath)
-    free((SW_STR)m_szSymPath);
-  m_szSymPath = NULL;
+  if (m_sw == NULL)
+    return false;
+  free((LPVOID)m_sw->m_szSymPath);
+  m_sw->m_szSymPath = NULL;
   if (szSymPath == NULL)
     return true;
-  m_szSymPath = (SW_CSTR) sw_sdup(szSymPath);
-  if (m_szSymPath)
-    m_options |= SymBuildPath;
-  return m_szSymPath ? true : false;
+  m_sw->m_szSymPath = (SW_CSTR) sw_sdup(szSymPath);
+  if (m_sw->m_szSymPath)
+    m_sw->m_options |= SymBuildPath;
+  return m_sw->m_szSymPath ? true : false;
 }
 
 bool StackWalkerBase::SetDbgHelpPath(LPCWSTR szDllPath) STKWLK_NOEXCEPT
 {
-  if (m_szDbgHelpPath)
-    free((LPVOID)m_szDbgHelpPath);
-  m_szDbgHelpPath = NULL;
+  if (m_sw == NULL)
+    return false;
+  free((LPVOID)m_sw->m_szDbgHelpPath);
+  m_sw->m_szDbgHelpPath = NULL;
   if (szDllPath == NULL)
     return true;
-  m_szDbgHelpPath = (LPCWSTR)_wcsdup(szDllPath);
-  return m_szDbgHelpPath ? true : false;
+  m_sw->m_szDbgHelpPath = (LPCWSTR)_wcsdup(szDllPath);
+  return m_sw->m_szDbgHelpPath ? true : false;
 }
 
 bool StackWalkerBase::SetTargetProcess(DWORD dwProcessId, HANDLE hProcess) STKWLK_NOEXCEPT
 {
-  m_dwProcessId = dwProcessId;
-  m_hProcess = hProcess;
-  if (m_sw)
-    m_sw->m_hProcess = hProcess;
+  if (m_sw == NULL)
+    return false;
+  m_sw->m_dwProcessId = dwProcessId;
+  m_sw->m_hProcess = hProcess;
   return true;
 }
 
@@ -1584,7 +1593,7 @@ bool StackWalkerInternal::InitAndLoad(bool showLoadModules) STKWLK_NOEXCEPT
 
   // Build the sym-path:
   SW_STR szSymPath = NULL;
-  if (m_SymInitialized == false && (m_parent->m_options & StackWalkerBase::SymBuildPath) != 0)
+  if (m_SymInitialized == false && (m_options & StackWalkerBase::SymBuildPath) != 0)
   {
     const size_t nSymPathLen = 4096;
     szSymPath = (SW_STR) malloc((nSymPathLen + 8) * sizeof(SW_CHR));
@@ -1595,9 +1604,9 @@ bool StackWalkerInternal::InitAndLoad(bool showLoadModules) STKWLK_NOEXCEPT
     }
     szSymPath[0] = 0;
     // Now first add the (optional) provided sympath:
-    if (this->m_parent->m_szSymPath != NULL)
+    if (this->m_szSymPath != NULL)
     {
-      MyStrCat(szSymPath, nSymPathLen, this->m_parent->m_szSymPath);
+      MyStrCat(szSymPath, nSymPathLen, this->m_szSymPath);
       MyStrCat(szSymPath, nSymPathLen, _T(";"));
     }
 
@@ -1656,7 +1665,7 @@ bool StackWalkerInternal::InitAndLoad(bool showLoadModules) STKWLK_NOEXCEPT
       MyStrCat(szSymPath, nSymPathLen, _T(";"));
     }
 
-    if ((this->m_parent->m_options & StackWalkerBase::SymUseSymSrv) != 0)
+    if ((this->m_options & StackWalkerBase::SymUseSymSrv) != 0)
     {
       SW_CSTR drive = _T("c:\\");
       len = GetEnvironmentVariable(_T("SYSTEMDRIVE"), szTemp, nTempLen);
@@ -1687,7 +1696,7 @@ bool StackWalkerInternal::InitAndLoad(bool showLoadModules) STKWLK_NOEXCEPT
     }
   }
   this->m_showLoadModules = showLoadModules;
-  bRet = this->LoadModules(this->m_hProcess, this->m_parent->m_dwProcessId);
+  bRet = this->LoadModules(this->m_hProcess, this->m_dwProcessId);
   return bRet;
 }
 
@@ -1823,7 +1832,6 @@ bool StackWalkerInternal::ShowCallstack(HANDLE          hThread,
   int                  frameNum;
   bool                 bLastEntryCalled = true;
   int                  curRecursionCount = 0;
-  const int            maxRecursionCount = m_parent->m_MaxRecursionCount;
 
   PNT_TIB lpTIB = GetCurrentTIB();
 
@@ -1888,7 +1896,7 @@ bool StackWalkerInternal::ShowCallstack(HANDLE          hThread,
     csEntry.offset = s.AddrPC.Offset;
     if (s.AddrPC.Offset == s.AddrReturn.Offset)
     {
-      if ((maxRecursionCount > 0) && (curRecursionCount > maxRecursionCount))
+      if ((m_MaxRecursionCount > 0) && (curRecursionCount > m_MaxRecursionCount))
       {
         this->OnDbgHelpErr(_T("StackWalk64-Endless-Callstack!"), 0, s.AddrPC.Offset);
         break;
@@ -2004,7 +2012,7 @@ bool StackWalkerBase::ShowObject(LPVOID pObject, LPVOID pUserData) STKWLK_NOEXCE
     T_SW_SYM_INFO symInf;
     DWORD64 dwAddress = (DWORD64)pObject;
     DWORD64 dwDisplacement = 0;
-    sname = m_sw->SymFromAddr(m_hProcess, dwAddress, &dwDisplacement, symInf);
+    sname = m_sw->SymFromAddr(m_sw->m_hProcess, dwAddress, &dwDisplacement, symInf);
     if (sname == NULL)
       this->OnDbgHelpErr(TDbgHelpErr(_T("SymGetSymFromAddr"), GetLastError(), dwAddress));
     else

@@ -269,14 +269,7 @@ protected:
   };
   virtual void OnDbgHelpErr(const TDbgHelpErr & data) STKWLK_NOEXCEPT = 0;
 
-  StackWalkerInternal* m_sw;
-  HANDLE               m_hProcess;
-  DWORD                m_dwProcessId;
-  SW_CSTR              m_szSymPath;
-  LPCWSTR              m_szDbgHelpPath;
-
-  int m_options;
-  int m_MaxRecursionCount;
+  StackWalkerInternal * m_sw;
 
   friend StackWalkerInternal;
 }; // class StackWalkerBase
