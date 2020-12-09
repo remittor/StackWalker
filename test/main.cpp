@@ -39,6 +39,8 @@
 #define strcpy_s(a, b, c) strcpy(a, c)
 #endif
 
+#pragma optimize( "", off )
+
 int iGlobalInt = 0;
 void (*pGlobalFuncPtr)() = 0;
 
@@ -47,7 +49,9 @@ void (*pGlobalFuncPtr)() = 0;
 class StackWalkerToConsole : public StackWalkerDemo
 {
 public:
-  StackWalkerToConsole() : StackWalkerDemo(StackWalkerBase::RetrieveVerbose | StackWalkerBase::SymBuildPath)
+  enum { OptionsAll = StackWalkerBase::RetrieveVerbose | StackWalkerBase::SymBuildPath };
+
+  StackWalkerToConsole() : StackWalkerDemo(OptionsAll)
   { 
     // nothing
   }
@@ -58,6 +62,7 @@ public:
                      LPVOID          pUserData = NULL) STKWLK_NOEXCEPT
   {
     StackWalkerDemo::ShowModules();
+    OnOutput(_T("Callstack:\n"));
     return StackWalkerDemo::ShowCallstack(hThread, context, pReadMemFunc, pUserData);
   }
 
