@@ -124,6 +124,9 @@ public:
     // Contains all the above "Sym"-options
     SymAll = 0x30,
 
+    // DbgHelp.DLL will be loaded once in a separate place in the process memory
+    SymIsolated = 0x10000,
+
     // Contains all options (default)
     OptionsAll = 0x3F
   } StackWalkOptions;

@@ -389,6 +389,8 @@ static errno_t MyPathCat(LPWSTR path, size_t capacity, LPCWSTR addon, bool isDir
   return 0;
 }
 
+// ===========================================================================================
+
 static HMODULE LoadDbgHelpLib(bool prefixIsDir, LPCWSTR prefix, LPCWSTR path) STKWLK_NOEXCEPT
 {
   WCHAR buf[2048];
@@ -424,6 +426,171 @@ static HMODULE LoadDbgHelpLib(bool prefixIsDir, LPCWSTR prefix, LPCWSTR path) ST
   return NULL;
 }
 
+struct DbgFileDesc
+{
+  WCHAR   szPathOrig[MAX_PATH];
+  WCHAR   szPathTemp[MAX_PATH];
+  HMODULE hLib;
+
+  DbgFileDesc() STKWLK_NOEXCEPT { memset(this, 0, sizeof(*this)); }
+
+  ~DbgFileDesc() STKWLK_NOEXCEPT { Destroy(); }
+
+  void Destroy() STKWLK_NOEXCEPT
+  {
+    if (hLib)
+      FreeLibrary(hLib);
+    if (szPathTemp[0])
+      DeleteFileW(szPathTemp);
+    memset(this, 0, sizeof(*this));
+  }
+
+  bool SetPathOrig(LPCWSTR path) STKWLK_NOEXCEPT
+  {
+    if (wcslen(path) >= _countof(szPathOrig))
+      return false;
+    MyStrCpy(szPathOrig, _countof(szPathOrig), path);
+    return true;
+  }
+
+  bool InstallFileToTemp(LPCWSTR tempdir) STKWLK_NOEXCEPT
+  {
+    szPathTemp[0] = 0;
+    if (!szPathOrig[0])
+      return false;
+    size_t len = wcslen(tempdir);
+    LPCWSTR name = wcsrchr(szPathOrig, L'\\');
+    if (!name)
+      return false;
+    if (len + wcslen(name) + 1 >= _countof(szPathTemp))
+      return false;
+    MyStrCpy(szPathTemp, _countof(szPathTemp), tempdir);
+    MyStrCat(szPathTemp, _countof(szPathTemp), name);
+    BOOL rc = CopyFileW(szPathOrig, szPathTemp, TRUE);
+    if (rc)
+      return true;
+    szPathTemp[0] = 0;
+    return false;
+  }
+};
+
+struct DbgHelpLib
+{
+  DbgFileDesc m_DbgHelp;   // dbghelp.dll
+  DbgFileDesc m_SymSrv;    // symsrv.dll
+  WCHAR       m_TempDir[MAX_PATH];
+
+  DbgHelpLib() STKWLK_NOEXCEPT { m_TempDir[0] = 0; }
+
+  ~DbgHelpLib() STKWLK_NOEXCEPT { Destroy(); }
+
+  void Destroy() STKWLK_NOEXCEPT
+  {
+    m_DbgHelp.Destroy();
+    m_SymSrv.Destroy();
+    if (m_TempDir[0])
+      RemoveDirectoryW(m_TempDir);
+  }
+
+  void ClearTempDir(LPCWSTR tempdir)
+  {
+    WCHAR path[MAX_PATH + 80] = { 0 };
+    if (GetFileAttributesW(tempdir) == INVALID_FILE_ATTRIBUTES)
+      return;
+    MyStrCpy(path, _countof(path), tempdir);
+    LPWSTR name = path + wcslen(path) + 1;
+    MyStrCat(path, _countof(path), L"\\*");
+    WIN32_FIND_DATAW fdata = { 0 };
+    HANDLE hnd = FindFirstFileW(path, &fdata);
+    if (!hnd || hnd == INVALID_HANDLE_VALUE)
+      return;
+    do {
+      LPWSTR dir;
+      size_t len = wcslen(fdata.cFileName);
+      if (len < 4 || len > 20)
+        continue;
+      dir = path + wcslen(path) + len;
+      MyStrCpy(name, 40, fdata.cFileName);
+      MyStrCat(name, 40, L"\\dbghelp.dll");
+      DeleteFileW(path);
+      MyStrCpy(name, 40, fdata.cFileName);
+      MyStrCat(name, 40, L"\\symsrv.dll");
+      DeleteFileW(path);
+      dir[0] = 0;
+      RemoveDirectoryW(path);
+    } while (FindNextFileW(hnd, &fdata));
+    FindClose(hnd);
+  }
+
+  bool ReloadLib(HMODULE hLib, HMODULE * hNewLib = NULL) STKWLK_NOEXCEPT
+  {
+    WCHAR buf[MAX_PATH] = { 0 };
+    LPCWSTR subdir = L"_sw_dbghelp";
+    HMODULE newlib = NULL;
+    DWORD rnd;
+    if (hLib == NULL)
+      return false;
+    DWORD dwLen = GetModuleFileNameW(hLib, buf, _countof(buf)-1);
+    buf[(dwLen == 0) ? 0 : _countof(buf)-1] = 0;
+    size_t len = wcslen(buf);
+    if (len < 3)
+      return false;
+    if (GetFileAttributesW(buf) == INVALID_FILE_ATTRIBUTES)
+      return false;
+    LPWSTR pname = wcsrchr(buf, L'\\');
+    if (!pname)
+      return false;
+    if (!m_DbgHelp.SetPathOrig(buf))
+      return false;
+    MyStrCpy(pname + 1, 11, L"symsrv.dll");
+    if (GetFileAttributesW(buf) != INVALID_FILE_ATTRIBUTES)
+      if (!m_SymSrv.SetPathOrig(buf))
+        return false;
+
+    memset(buf, 0, sizeof(buf));
+    dwLen = GetTempPathW(_countof(buf)-1, buf);
+    buf[(dwLen == 0) ? 0 : _countof(buf)-1] = 0;
+    len = wcslen(buf);
+    if (len < 3 || len + wcslen(subdir) + 20 > _countof(buf))
+      return false;
+    MyStrCat(buf, _countof(buf), subdir);
+    BOOL rc = CreateDirectoryW(buf, NULL);
+    if (rc == FALSE && GetLastError() != ERROR_ALREADY_EXISTS)
+      return false;
+    ClearTempDir(buf);
+    rnd = GetTickCount();
+    len = wcslen(buf);
+    MyStrFmt(buf + len, _countof(buf) - len, L"\\%08X", rnd);
+    rc = CreateDirectoryW(buf, NULL);
+    if (rc == FALSE && GetLastError() != ERROR_ALREADY_EXISTS)
+      return false;
+    if (wcslen(buf) >= _countof(m_TempDir))
+      return false;
+    MyStrCpy(m_TempDir, _countof(m_TempDir), buf);
+
+    if (!m_DbgHelp.InstallFileToTemp(m_TempDir))
+      goto fin;
+    if (m_SymSrv.szPathOrig[0])
+      if (!m_SymSrv.InstallFileToTemp(m_TempDir))
+        goto fin;
+
+    newlib = LoadLibraryW(m_DbgHelp.szPathTemp);
+    if (!newlib)
+      goto fin;
+
+    FreeLibrary(hLib);   // unload original DLL
+    m_DbgHelp.hLib = newlib;
+    if (hNewLib)
+      *hNewLib = newlib;
+    return true;
+
+  fin:
+    Destroy();
+    return false;
+  }
+};
+
+// ===========================================================================================
 
 class StackWalkerInternal
 {
@@ -435,6 +602,7 @@ public:
     m_hDbhHelp = NULL;
     m_hProcess = hProcess;
     m_SymInitialized = false;
+    m_modListSize = 0;
     ResetLoadModules();
     m_IHM64Version = 0;      // unknown version
     m_pUserData = NULL;
@@ -555,6 +723,10 @@ public:
     data.szDllPath = buf[0] ? buf : NULL;
     this->m_parent->OnLoadDbgHelp(data);
 
+    if ((m_parent->m_options & StackWalkerBase::SymIsolated) != 0)
+      if (data.ver.wMajor >= 6)
+        m_dh.ReloadLib(m_hDbhHelp, &m_hDbhHelp);
+
     memset(&Sym, 0, sizeof(Sym));
     int fcnt = 0;
     GetProcAddrEx(fcnt, m_hDbhHelp, "SymCleanup", (LPVOID*)&Sym.Cleanup);
@@ -633,6 +805,7 @@ public:
   CRITICAL_SECTION  m_critsec;
   CONTEXT m_ctx;
   HMODULE m_hDbhHelp;
+  DbgHelpLib m_dh;             // copy of the DLL for multi-instance use
   HANDLE  m_hProcess;
   bool    m_SymInitialized;
   bool    m_showLoadModules;
