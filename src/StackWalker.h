@@ -96,8 +96,7 @@ public:
 
   typedef enum StackWalkOptions
   {
-    // No addition info will be retrieved
-    // (only the address is available)
+    // No addition info will be retrieved (only the address is available)
     RetrieveNone = 0,
 
     // Try to get the symbol-name
@@ -112,24 +111,25 @@ public:
     // Also retrieve the version for the DLL/EXE
     RetrieveFileVersion = 8,
 
-    // Contains all the above
-    RetrieveVerbose = 0xF,
-
     // Generate a "good" symbol-search-path
     SymBuildPath = 0x10,
 
     // Also use the public Microsoft-Symbol-Server
     SymUseSymSrv = 0x20,
 
-    // Contains all the above "Sym"-options
-    SymAll = 0x30,
-
     // DbgHelp.DLL will be loaded once in a separate place in the process memory
-    SymIsolated = 0x10000,
+    SymIsolated = 0x40,
 
-    // Contains all options (default)
-    OptionsAll = 0x3F
   } StackWalkOptions;
+
+  // Contains all the "Retrieve"-options
+  enum { RetrieveVerbose = RetrieveSymbol | RetrieveLine | RetrieveModuleInfo | RetrieveFileVersion };
+  
+  // Contains all the "Sym"-options (excluding `SymIsolated`)
+  enum { SymAll = SymBuildPath | SymUseSymSrv };
+
+  // Contains all options (default)
+  enum { OptionsAll = RetrieveVerbose | SymAll };
 
   StackWalkerBase(ExceptType extype,
                   int options = OptionsAll,
