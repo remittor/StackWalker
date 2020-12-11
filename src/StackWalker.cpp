@@ -512,7 +512,8 @@ struct DbgHelpLib
       dir = path + wcslen(path) + len;
       MyStrCpy(name, 40, fdata.cFileName);
       MyStrCat(name, 40, L"\\dbghelp.dll");
-      DeleteFileW(path);
+      if (DeleteFileW(path) == FALSE)
+        continue;
       MyStrCpy(name, 40, fdata.cFileName);
       MyStrCat(name, 40, L"\\symsrv.dll");
       DeleteFileW(path);
@@ -2148,10 +2149,8 @@ void StackWalkerDemo::OnSymInit(const TSymInit & data) STKWLK_NOEXCEPT
   // Also display the OS-version
   T_OSVERSIONINFOEX ver = { 0 };
   ver.dwOSVersionInfoSize = sizeof(ver);
-#if _MSC_VER >= 1900
 #pragma warning(push)
 #pragma warning(disable : 4996)  // For fix warning "GetVersionExW was declared deprecated"
-#endif
   if (GetVersionEx((T_OSVERSIONINFO*)&ver) != FALSE)
   {
     MyStrFmt(buf, _countof(buf), _T("OS-Version: %d.%d.%d (%s) 0x%04x-%d\n"),
@@ -2159,9 +2158,7 @@ void StackWalkerDemo::OnSymInit(const TSymInit & data) STKWLK_NOEXCEPT
               ver.wSuiteMask, ver.wProductType);
     OnOutput(buf);
   }
-#if _MSC_VER >= 1900
 #pragma warning(pop)
-#endif
 }
 
 void StackWalkerDemo::OnOutput(SW_CSTR buffer) STKWLK_NOEXCEPT

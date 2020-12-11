@@ -188,7 +188,6 @@ public:
 
   bool ShowObject(LPVOID pObject, LPVOID pUserData = NULL) STKWLK_NOEXCEPT;
 
-protected:
   struct TFileVer
   {
     WORD  wMajor;
