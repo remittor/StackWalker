@@ -58,3 +58,8 @@ build_script:
   - if not [%BUILDER%]==[msbuild] cmake -E chdir "build-dir" cmake -G "%CMAKE_GENERATOR%" --config RelWithDebInfo -DCMAKE_INSTALL_PREFIX="%APPVEYOR_BUILD_FOLDER%/out" ..
   - if not [%BUILDER%]==[msbuild] cmake --build "build-dir" --config RelWithDebInfo
   - if not [%BUILDER%]==[msbuild] cmake --build "build-dir" --target install --config RelWithDebInfo
+
+test_script:
+  - if not [%BUILDER%]==[msbuild] cd "%APPVEYOR_BUILD_FOLDER%/out/test"
+  - if not [%BUILDER%]==[msbuild] sw_test0.exe
+  - if not [%BUILDER%]==[msbuild] sw_test1.exe

@@ -10,6 +10,8 @@
  *
  **********************************************************************/
 
+#if !defined(STKWLK_UNIT_TEST) || STKWLK_UNIT_TEST == 0
+
 // For compatibility with <tchar.h>
 #if !defined(STKWLK_ANSI) && !defined(_MBCS)
 #ifndef _UNICODE
@@ -28,8 +30,12 @@
 #include <stdio.h>
 #include <tchar.h>
 
-#define UNHANDLED_EXCEPTION_TEST
-#define EXCEPTION_FILTER_TEST
+#if !defined(UNHANDLED_EXCEPTION_TEST)
+#define UNHANDLED_EXCEPTION_TEST 1
+#endif
+#if !defined(EXCEPTION_FILTER_TEST)
+#define EXCEPTION_FILTER_TEST 1
+#endif
 
 // secure-CRT_functions are only available starting with VC8
 #if _MSC_VER < 1400
@@ -112,7 +118,7 @@ void GlobalFunctionPointerTest()
   sw.ShowObject(&pGlobalFuncPtr);
 }
 
-#ifdef UNHANDLED_EXCEPTION_TEST
+#if UNHANDLED_EXCEPTION_TEST > 0
 
 // For more info about "PreventSetUnhandledExceptionFilter" see:
 // "SetUnhandledExceptionFilter" and VC8
@@ -219,7 +225,7 @@ static void InitUnhandledExceptionFilter()
 }
 #endif // UNHANDLED_EXCEPTION_TEST
 
-#ifdef EXCEPTION_FILTER_TEST
+#if EXCEPTION_FILTER_TEST > 0
 LONG WINAPI ExpFilter(EXCEPTION_POINTERS* pExp, DWORD dwExpCode)
 {
   //StackWalker sw;  // output to default (Debug-Window)
@@ -280,12 +286,12 @@ int _tmain(int argc, _TCHAR* argv[])
   printf("\n\n\nShow a simple callstack of the current thread:\n\n\n");
   StackWalkTest();
 
-#ifdef EXCEPTION_FILTER_TEST
+#if EXCEPTION_FILTER_TEST > 0
   printf("\n\n\nShow a the callstack from inside an exception-handler:\n\n\n");
   TestExceptionWalking();
 #endif
 
-#ifdef UNHANDLED_EXCEPTION_TEST
+#if UNHANDLED_EXCEPTION_TEST > 0
   printf("\n\n\nCatch unhandled exceptions and show the callstack:\n\n\n");
   // This will only work, if the program is *not* started under a debugger
   // If the program is running under a debugger, the debugger will catch this exception ;)
@@ -297,3 +303,5 @@ int _tmain(int argc, _TCHAR* argv[])
 
   return 0;
 }
+
+#endif // STKWLK_UNIT_TEST
